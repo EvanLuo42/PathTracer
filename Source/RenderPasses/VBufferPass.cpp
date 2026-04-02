@@ -55,13 +55,14 @@ void VBufferPass::Execute(ICommandEncoder* encoder, Resources& resources)
     const uint32_t height = vbufDesc.size.height;
 
     const auto passEncoder = encoder->beginRayTracingPass();
-    const ShaderVar vars(passEncoder->bindPipeline(pipeline, shaderTable));
+    passEncoder->pushDebugGroup(GetName(), kPassColor);
 
+    const ShaderVar vars(passEncoder->bindPipeline(pipeline, shaderTable));
     vars["gVBuffer"] = resources.vBuffer;
     vars["gTLAS"] = scene->GetTLAS();
-
     vars["gCamera"] = resources.cameraData;
 
     passEncoder->dispatchRays(0, width, height, 1);
+    passEncoder->popDebugGroup();
     passEncoder->end();
 }

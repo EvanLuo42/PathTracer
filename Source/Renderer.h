@@ -10,6 +10,10 @@
 
 #include <slang-com-ptr.h>
 #include <GLFW/glfw3.h>
+#if SLANG_WINDOWS_FAMILY
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
+#endif
 
 #include <filesystem>
 #include <memory>
@@ -25,6 +29,7 @@ public:
     void AddRenderPass(std::unique_ptr<IRenderPass> pass);
 
     void OnRender();
+    void OnRenderUI();
     void OnUpdate(double deltaTime);
     void OnResize(uint32_t width, uint32_t height) const;
     void OnScroll(double yOffset) { camera.OnScroll(yOffset); }
@@ -44,4 +49,8 @@ private:
     std::shared_ptr<Scene> scene;
     std::unique_ptr<ImGuiPass> imguiPass;
     std::vector<std::unique_ptr<IRenderPass>> renderPasses;
+    bool showUI = true;
+    bool vsync = true;
+    bool pendingVSyncChange = false;
+    std::filesystem::path pendingScenePath;
 };

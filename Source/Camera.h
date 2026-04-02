@@ -2,6 +2,7 @@
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <imgui.h>
 #include <GLFW/glfw3.h>
 
 struct CameraData
@@ -28,14 +29,17 @@ public:
 
     void OnUpdate(GLFWwindow* window, float deltaTime)
     {
-        // Only process input when right mouse button is held
-        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS)
+        auto& imguiIO = ImGui::GetIO();
+
+        // Only process input when right mouse button is held and ImGui doesn't want the mouse
+        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS && !imguiIO.WantCaptureMouse)
         {
             if (!captured)
             {
                 captured = true;
                 glfwGetCursorPos(window, &lastMouseX, &lastMouseY);
                 glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                imguiIO.ConfigFlags |= ImGuiConfigFlags_NoMouse;
             }
 
             double mouseX, mouseY;
@@ -68,6 +72,7 @@ public:
             {
                 captured = false;
                 glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+                imguiIO.ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
             }
         }
 
@@ -91,6 +96,19 @@ public:
     void OnScroll(double yOffset)
     {
         moveSpeed = glm::clamp(moveSpeed + static_cast<float>(yOffset) * 0.3f, 0.1f, 100.0f);
+    }
+
+    void OnRenderUI()
+    {
+        ImGui::DragFloat3("Position", &position.x, 0.1f);
+        bool orientChanged = false;
+        orientChanged |= ImGui::DragFloat("Yaw", &yaw, 0.5f);
+        orientChanged |= ImGui::DragFloat("Pitch", &pitch, 0.5f, -89.0f, 89.0f);
+        if (orientChanged)
+            UpdateVectors();
+        ImGui::SliderFloat("FoV", &fovY, 10.0f, 120.0f);
+        ImGui::DragFloat("Move Speed", &moveSpeed, 0.1f, 0.1f, 100.0f);
+        ImGui::SliderFloat("Sensitivity", &mouseSensitivity, 0.01f, 1.0f);
     }
 
     glm::vec3 position;

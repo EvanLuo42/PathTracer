@@ -50,6 +50,7 @@ void BlitPass::Execute(ICommandEncoder* encoder, Resources& resources)
     renderPassDesc.colorAttachmentCount = 1;
 
     auto passEncoder = encoder->beginRenderPass(renderPassDesc);
+    passEncoder->pushDebugGroup(GetName(), kPassColor);
     ShaderVar vars(passEncoder->bindPipeline(pipeline));
 
     vars["gInput"] = resources.colorOutput;
@@ -65,5 +66,6 @@ void BlitPass::Execute(ICommandEncoder* encoder, Resources& resources)
     DrawArguments drawArgs = {};
     drawArgs.vertexCount = 3;
     passEncoder->draw(drawArgs);
+    passEncoder->popDebugGroup();
     passEncoder->end();
 }

@@ -17,6 +17,7 @@ public:
     ~ImGuiPass() override;
 
     void BeginFrame();
+    const char* GetName() const override { return "ImGui"; }
     void Execute(rhi::ICommandEncoder* encoder, Resources& resources) override;
 
 private:

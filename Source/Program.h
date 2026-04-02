@@ -118,6 +118,7 @@ private:
         programDesc.slangGlobalScope = linkedProgram;
         programDesc.slangEntryPoints = nullptr;
         programDesc.slangEntryPointCount = 0;
+        programDesc.label = desc.moduleName.c_str();
 
         device->createShaderProgram(programDesc, shaderProgram.writeRef(), diagnostics.writeRef());
         PrintDiagnostics(diagnostics);

@@ -75,6 +75,7 @@ public:
         rhiDesc.depthStencil = desc.depthStencil;
         rhiDesc.rasterizer = desc.rasterizer;
         rhiDesc.multisample = desc.multisample;
+        rhiDesc.label = desc.program->GetDesc().moduleName.c_str();
 
         auto pipeline = device->createRenderPipeline(rhiDesc);
         if (!pipeline)
@@ -90,6 +91,7 @@ public:
     {
         rhi::ComputePipelineDesc desc = {};
         desc.program = program->GetShaderProgram();
+        desc.label = program->GetDesc().moduleName.c_str();
 
         auto pipeline = device->createComputePipeline(desc);
         if (!pipeline)
@@ -162,6 +164,7 @@ public:
         rhiDesc.maxRayPayloadSize = desc.maxRayPayloadSize;
         rhiDesc.maxAttributeSizeInBytes = desc.maxAttributeSize;
         rhiDesc.flags = desc.flags;
+        rhiDesc.label = desc.program->GetDesc().moduleName.c_str();
 
         auto pipeline = device->createRayTracingPipeline(rhiDesc);
         if (!pipeline)

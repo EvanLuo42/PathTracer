@@ -12,6 +12,7 @@ class BlitPass : public IRenderPass
 public:
     BlitPass(rhi::IDevice* device, rhi::ISurface* surface);
     void Execute(rhi::ICommandEncoder* encoder, Resources& resources) override;
+    const char* GetName() const override { return "Blit"; }
 
 private:
     rhi::IDevice* device;

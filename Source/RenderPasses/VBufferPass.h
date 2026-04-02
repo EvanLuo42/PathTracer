@@ -16,6 +16,7 @@ public:
     VBufferPass(rhi::IDevice* device, std::shared_ptr<Scene> scene);
 
     void Execute(rhi::ICommandEncoder* encoder, Resources& resources) override;
+    const char* GetName() const override { return "VBuffer"; }
 
 private:
     rhi::IDevice* device;

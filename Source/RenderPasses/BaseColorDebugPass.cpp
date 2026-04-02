@@ -26,12 +26,14 @@ void BaseColorDebugPass::Execute(ICommandEncoder* encoder, Resources& resources)
     const uint32_t height = desc.size.height;
 
     const auto passEncoder = encoder->beginComputePass();
-    const ShaderVar vars(passEncoder->bindPipeline(pipeline));
+    passEncoder->pushDebugGroup(GetName(), kPassColor);
 
+    const ShaderVar vars(passEncoder->bindPipeline(pipeline));
     vars["gVBuffer"] = resources.vBuffer;
     vars["gOutput"] = resources.colorOutput;
     scene->Bind(vars["gScene"]);
 
     passEncoder->dispatchCompute((width + 7) / 8, (height + 7) / 8, 1);
+    passEncoder->popDebugGroup();
     passEncoder->end();
 }

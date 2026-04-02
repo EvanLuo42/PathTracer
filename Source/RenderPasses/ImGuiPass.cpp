@@ -62,7 +62,7 @@ void ImGuiPass::CreatePipeline()
 {
     // Program
     auto program = Program::Create(device, Program::Desc()
-        .AddShaderModule("imgui")
+        .AddShaderModule("ImGui")
         .VSEntry("vertexMain")
         .FSEntry("fragmentMain")
     );
@@ -181,6 +181,7 @@ void ImGuiPass::Execute(ICommandEncoder* encoder, Resources& resources)
     renderPassDesc.colorAttachmentCount = 1;
 
     IRenderPassEncoder* passEncoder = encoder->beginRenderPass(renderPassDesc);
+    passEncoder->pushDebugGroup(GetName(), kPassColor);
 
     ShaderVar vars(passEncoder->bindPipeline(pipeline));
 
@@ -246,5 +247,6 @@ void ImGuiPass::Execute(ICommandEncoder* encoder, Resources& resources)
         globalIdxOffset += cmdList->IdxBuffer.Size;
     }
 
+    passEncoder->popDebugGroup();
     passEncoder->end();
 }
