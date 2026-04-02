@@ -1,0 +1,14 @@
+# Default: normalize to LF in repo
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files: no conversion
+*.png binary
+*.jpg binary
+*.exe binary
+*.dll binary
+*.lib binary
+*.a   binary
