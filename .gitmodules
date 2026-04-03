@@ -13,3 +13,6 @@
 [submodule "External/tinygltf"]
 	path = External/tinygltf
 	url = git@github.com:syoyo/tinygltf.git
+[submodule "External/spdlog"]
+	path = External/spdlog
+	url = git@github.com:gabime/spdlog.git

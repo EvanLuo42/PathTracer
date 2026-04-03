@@ -7,10 +7,28 @@
 
 struct CameraData
 {
-    glm::mat4 invView;
-    glm::mat4 invProj;
+    glm::mat4 viewMatrix;
+    glm::mat4 projMatrix;
+    glm::mat4 invViewMatrix;
+    glm::mat4 invProjMatrix;
+    glm::mat4 viewProjMatrix;
+    glm::mat4 invViewProjMatrix;
+
     glm::vec3 position;
     float fovY;
+
+    glm::vec3 forward;
+    float aspectRatio;
+
+    glm::vec3 up;
+    float nearZ;
+
+    glm::vec3 right;
+    float farZ;
+
+    glm::vec2 jitter;
+    uint32_t frameIndex;
+    float _pad;
 };
 
 class Camera
@@ -59,12 +77,18 @@ public:
             if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
                 speed *= 3.0f;
 
-            if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) position += front * speed;
-            if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) position -= front * speed;
-            if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) position -= right * speed;
-            if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) position += right * speed;
-            if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) position += up * speed;
-            if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) position -= up * speed;
+            if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+                position += front * speed;
+            if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+                position -= front * speed;
+            if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+                position -= right * speed;
+            if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+                position += right * speed;
+            if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+                position += up * speed;
+            if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
+                position -= up * speed;
         }
         else
         {
@@ -80,23 +104,40 @@ public:
         // (handled via callback, see SetScrollCallback)
     }
 
-    CameraData GetCameraData(float aspectRatio) const
+    CameraData GetCameraData(float aspectRatio)
     {
+        constexpr float nearZ = 0.001f;
+        constexpr float farZ = 10000.0f;
+
         const auto view = glm::lookAt(position, position + front, up);
-        const auto proj = glm::perspective(glm::radians(fovY), aspectRatio, 0.001f, 10000.0f);
+        const auto proj = glm::perspective(glm::radians(fovY), aspectRatio, nearZ, farZ);
+        const auto viewProj = proj * view;
 
         CameraData data;
-        data.invView = glm::transpose(glm::inverse(view));
-        data.invProj = glm::transpose(glm::inverse(proj));
+        data.viewMatrix = glm::transpose(view);
+        data.projMatrix = glm::transpose(proj);
+        data.invViewMatrix = glm::transpose(glm::inverse(view));
+        data.invProjMatrix = glm::transpose(glm::inverse(proj));
+        data.viewProjMatrix = glm::transpose(viewProj);
+        data.invViewProjMatrix = glm::transpose(glm::inverse(viewProj));
+
         data.position = position;
         data.fovY = glm::radians(fovY);
+        data.forward = front;
+        data.aspectRatio = aspectRatio;
+        data.up = up;
+        data.nearZ = nearZ;
+        data.right = right;
+        data.farZ = farZ;
+
+        data.jitter = glm::vec2(0.0f);
+        data.frameIndex = frameIndex++;
+        data._pad = 0.0f;
+
         return data;
     }
 
-    void OnScroll(double yOffset)
-    {
-        moveSpeed = glm::clamp(moveSpeed + static_cast<float>(yOffset) * 0.3f, 0.1f, 100.0f);
-    }
+    void OnScroll(double yOffset) { moveSpeed = glm::clamp(moveSpeed + static_cast<float>(yOffset) * 0.3f, 0.1f, 100.0f); }
 
     void OnRenderUI()
     {
@@ -111,7 +152,7 @@ public:
         ImGui::SliderFloat("Sensitivity", &mouseSensitivity, 0.01f, 1.0f);
     }
 
-    glm::vec3 position;
+    glm::vec3 position{};
     float fovY;
     float moveSpeed;
 
@@ -120,11 +161,7 @@ private:
     {
         const float yawRad = glm::radians(yaw);
         const float pitchRad = glm::radians(pitch);
-        front = glm::normalize(glm::vec3(
-            cos(pitchRad) * cos(yawRad),
-            sin(pitchRad),
-            cos(pitchRad) * sin(yawRad)
-        ));
+        front = glm::normalize(glm::vec3(cos(pitchRad) * cos(yawRad), sin(pitchRad), cos(pitchRad) * sin(yawRad)));
         right = glm::normalize(glm::cross(front, glm::vec3(0, 1, 0)));
         up = glm::normalize(glm::cross(right, front));
     }
@@ -135,6 +172,7 @@ private:
     float yaw, pitch;
     float mouseSensitivity;
 
+    uint32_t frameIndex = 0;
     bool captured = false;
     double lastMouseX = 0, lastMouseY = 0;
 };

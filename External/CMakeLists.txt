@@ -22,6 +22,9 @@ add_subdirectory(glm)
 message(STATUS "Configure slang")
 add_subdirectory(slang-rhi)
 
+message(STATUS "Configure spdlog")
+add_subdirectory(spdlog)
+
 message(STATUS "Configure tinygltf")
 set(TINYGLTF_BUILD_LOADER_EXAMPLE OFF CACHE BOOL "" FORCE)
 set(TINYGLTF_BUILD_GL_EXAMPLES OFF CACHE BOOL "" FORCE)

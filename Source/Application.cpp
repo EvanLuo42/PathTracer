@@ -24,7 +24,7 @@ Application::Application()
 
         if (!rhi::getRHI()->isDeviceTypeSupported(deviceType))
         {
-            std::cerr << "[App] " << deviceTypeName << " is not supported, skipping" << std::endl;
+            spdlog::warn("{} is not supported, skipping", deviceTypeName);
             continue;
         }
 
@@ -32,7 +32,7 @@ Application::Application()
 
         if (SLANG_FAILED(InitDevice(deviceType, requiredFeatures, macros)))
         {
-            std::cerr << "[App] Failed to create " << deviceTypeName << " device, skipping" << std::endl;
+            spdlog::error("Failed to create {} device, skipping", deviceTypeName);
             continue;
         }
 
@@ -46,24 +46,24 @@ Application::Application()
             device.setNull();
             if (SLANG_FAILED(InitDevice(deviceType, requiredFeatures, macros)))
             {
-                std::cerr << "[App] Failed to recreate " << deviceTypeName << " device with macros, skipping" << std::endl;
+                spdlog::error("Failed to recreate {} device with macros, skipping", deviceTypeName);
                 continue;
             }
         }
 
         if (SLANG_FAILED(InitWindow("Path Tracer", 1280, 720)))
         {
-            std::cerr << "[App] Failed to create window for " << deviceTypeName << ", skipping" << std::endl;
+            spdlog::error("Failed to create window for {}, skipping", deviceTypeName);
             continue;
         }
 
         if (SLANG_FAILED(InitSurface(rhi::Format::Undefined)))
         {
-            std::cerr << "[App] Failed to create surface for " << deviceTypeName << ", skipping" << std::endl;
+            spdlog::error("Failed to create surface for {}, skipping", deviceTypeName);
             continue;
         }
 
-        std::cerr << "[App] Initialized with " << deviceTypeName << std::endl;
+        spdlog::info("Initialized with {}", deviceTypeName);
         renderer = std::make_unique<Renderer>(window, device, surface);
         renderer->LoadScene(MEDIA_DIR "/FlightHelmet/FlightHelmet.gltf");
 

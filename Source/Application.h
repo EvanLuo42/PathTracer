@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Renderer.h"
-#include "PipelineCache.h"
+#include "Renderer/Renderer.h"
+#include "Core/PipelineCache.h"
 #include <slang-rhi.h>
 
 #if SLANG_WINDOWS_FAMILY
@@ -19,7 +19,7 @@
 #include <vector>
 
 #include <format>
-#include <iostream>
+#include <spdlog/spdlog.h>
 
 class DebugCallback : public rhi::IDebugCallback
 {
@@ -27,19 +27,12 @@ public:
     SLANG_NO_THROW void SLANG_MCALL
     handleMessage(const rhi::DebugMessageType type, const rhi::DebugMessageSource source, const char* message) override
     {
-        auto typeStr = "";
-        switch (type)
-        {
-        case rhi::DebugMessageType::Info:
-            typeStr = "Info";
-            break;
-        case rhi::DebugMessageType::Warning:
-            typeStr = "Warning";
-            break;
-        case rhi::DebugMessageType::Error:
-            typeStr = "Error";
-            break;
-        }
+        std::string_view msg(message);
+        while (!msg.empty() && (msg.back() == '\n' || msg.back() == '\r' || msg.back() == ' '))
+            msg.remove_suffix(1);
+
+        if (const auto pos = msg.find(" - "); msg.starts_with("message: ") && pos != std::string_view::npos)
+            msg = msg.substr(pos + 3);
 
         auto sourceStr = "";
         switch (source)
@@ -55,12 +48,21 @@ public:
             break;
         }
 
-        // Strip "message: N - " prefix from driver messages
-        std::string_view msg(message);
-        if (const auto pos = msg.find(" - "); msg.starts_with("message: ") && pos != std::string_view::npos)
-            msg = msg.substr(pos + 3);
-
-        std::cerr << "[RHI " << typeStr << "] (" << sourceStr << ") " << msg << std::endl;
+        switch (type)
+        {
+        case rhi::DebugMessageType::Info:
+            if (source == rhi::DebugMessageSource::Driver)
+                spdlog::trace("RHI ({}) {}", sourceStr, msg);
+            else
+                spdlog::info("RHI ({}) {}", sourceStr, msg);
+            break;
+        case rhi::DebugMessageType::Warning:
+            spdlog::warn("RHI ({}) {}", sourceStr, msg);
+            break;
+        case rhi::DebugMessageType::Error:
+            spdlog::error("RHI ({}) {}", sourceStr, msg);
+            break;
+        }
     }
 };
 
@@ -84,7 +86,7 @@ private:
         window = glfwCreateWindow(static_cast<int>(width), static_cast<int>(height), fullTitle.c_str(), nullptr, nullptr);
         if (!window)
         {
-            std::cerr << "[App] Failed to create GLFW window" << std::endl;
+            spdlog::error("Failed to create GLFW window");
             return SLANG_FAIL;
         }
 
@@ -126,7 +128,7 @@ private:
 
         if (SLANG_FAILED(rhi::getRHI()->createDevice(deviceDesc, device.writeRef())))
         {
-            std::cerr << "[App] Failed to create device" << std::endl;
+            spdlog::error("Failed to create device");
             return SLANG_FAIL;
         }
 
@@ -134,7 +136,7 @@ private:
         {
             if (!device->hasFeature(feature))
             {
-                std::cerr << "[App] Missing required feature: " << rhi::getRHI()->getFeatureName(feature) << std::endl;
+                spdlog::error("Missing required feature: {}", rhi::getRHI()->getFeatureName(feature));
                 return SLANG_E_NOT_AVAILABLE;
             }
         }
@@ -149,7 +151,7 @@ private:
 
         if (SLANG_FAILED(device->createSurface(rhi::getWindowHandleFromGLFW(window), surface.writeRef())))
         {
-            std::cerr << "[App] Failed to create surface" << std::endl;
+            spdlog::error("Failed to create surface");
             return SLANG_FAIL;
         }
         rhi::SurfaceConfig surfaceConfig;
@@ -158,7 +160,7 @@ private:
         surfaceConfig.format = format;
         if (SLANG_FAILED(surface->configure(surfaceConfig)))
         {
-            std::cerr << "[App] Failed to configure surface" << std::endl;
+            spdlog::error("Failed to configure surface");
             return SLANG_FAIL;
         }
 

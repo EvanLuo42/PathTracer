@@ -7,25 +7,25 @@ add_subdirectory(External)
 
 add_executable(PathTracer
         Source/main.cpp
-        Source/Renderer.cpp
-        Source/Renderer.h
+        Source/Renderer/Renderer.cpp
+        Source/Renderer/Renderer.h
         Source/Application.cpp
         Source/Application.h
-        Source/Resources.h
-        Source/Scene.h
-        Source/Scene.cpp
+        Source/Renderer/Resources.h
+        Source/Scene/Scene.h
+        Source/Scene/Scene.cpp
         Source/RenderPasses/IRenderPass.h
-        Source/RenderPasses/ImGuiPass.h
-        Source/RenderPasses/ImGuiPass.cpp
-        Source/RenderPasses/VBufferPass.h
-        Source/RenderPasses/VBufferPass.cpp
-        Source/RenderPasses/BaseColorDebugPass.h
-        Source/RenderPasses/BaseColorDebugPass.cpp
-        Source/RenderPasses/BlitPass.h
-        Source/RenderPasses/BlitPass.cpp)
+        Source/Core/PipelineCache.h
+        Source/Core/Program.cpp
+        Source/Core/Program.h
+        Source/Renderer/Gui.cpp
+        Source/Renderer/Gui.h
+)
+
+target_include_directories(PathTracer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/Source)
 
 target_compile_definitions(PathTracer PRIVATE
-        SHADER_DIR="${CMAKE_SOURCE_DIR}/Shaders"
+        SHADER_DIR="${CMAKE_SOURCE_DIR}/Source"
         MEDIA_DIR="${CMAKE_SOURCE_DIR}/media"
 )
 
@@ -36,5 +36,6 @@ target_link_libraries(PathTracer
         glfw
         glm
         imgui
+        spdlog
         tinygltf
 )

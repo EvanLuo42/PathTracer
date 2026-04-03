@@ -3,7 +3,6 @@
 #include <slang-rhi.h>
 
 #include <atomic>
-#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -13,6 +12,7 @@
 class CacheBlob : public ISlangBlob
 {
 public:
+    virtual ~CacheBlob() = default;
     explicit CacheBlob(size_t size) : m_data(size) {}
 
     SLANG_NO_THROW void const* SLANG_MCALL getBufferPointer() override { return m_data.data(); }
@@ -42,6 +42,8 @@ private:
 class PipelineCache : public rhi::IPersistentCache
 {
 public:
+    virtual ~PipelineCache() = default;
+
     explicit PipelineCache(std::filesystem::path cacheDir)
         : m_cacheDir(std::move(cacheDir))
     {

@@ -1,10 +1,8 @@
 #include "Renderer.h"
-#include "RenderPasses/VBufferPass.h"
-#include "RenderPasses/BaseColorDebugPass.h"
-#include "RenderPasses/BlitPass.h"
 
 #include <imgui.h>
-#include <iostream>
+#include <spdlog/spdlog.h>
+#include <stb_image.h>
 
 #if SLANG_WINDOWS_FAMILY
 #define WIN32_LEAN_AND_MEAN
@@ -15,14 +13,14 @@
 
 namespace
 {
-    std::filesystem::path OpenFileDialog(GLFWwindow* window)
+    std::filesystem::path OpenFileDialog(GLFWwindow* window, const char* filter)
     {
 #if SLANG_WINDOWS_FAMILY
         char filename[MAX_PATH] = {};
         OPENFILENAMEA ofn = {};
         ofn.lStructSize = sizeof(ofn);
         ofn.hwndOwner = glfwGetWin32Window(window);
-        ofn.lpstrFilter = "glTF Files\0*.gltf;*.glb\0All Files\0*.*\0";
+        ofn.lpstrFilter = filter;
         ofn.lpstrFile = filename;
         ofn.nMaxFile = MAX_PATH;
         ofn.Flags = OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
@@ -33,29 +31,26 @@ namespace
     }
 }
 
-Renderer::Renderer(GLFWwindow* window, Slang::ComPtr<rhi::IDevice> device, Slang::ComPtr<rhi::ISurface> surface)
-    : window(window), device(device), surface(std::move(surface))
+Renderer::Renderer(GLFWwindow* window, rhi::IDevice* device, rhi::ISurface* surface)
+    : window(window), device(device), surface(surface)
 {
     queue = device->getQueue(rhi::QueueType::Graphics);
     if (!queue)
     {
-        std::cerr << "[Renderer] Failed to get graphics queue" << std::endl;
+        spdlog::error("Failed to get graphics queue");
         return;
     }
 
     int width, height;
     glfwGetFramebufferSize(window, &width, &height);
     resources = std::make_unique<Resources>(device, static_cast<uint32_t>(width), static_cast<uint32_t>(height));
-
-    imguiPass = std::make_unique<ImGuiPass>(device, this->surface, window);
+    gui = std::make_unique<Gui>(device, surface, window);
 }
 
 Renderer::~Renderer()
 {
     if (queue)
         queue->waitOnHost();
-
-    imguiPass.reset();
 }
 
 void Renderer::LoadScene(const std::filesystem::path& path)
@@ -66,13 +61,53 @@ void Renderer::LoadScene(const std::filesystem::path& path)
     scene = Scene::Create(device, queue, path);
     if (!scene)
     {
-        std::cerr << "[Renderer] Failed to load scene: " << path << std::endl;
+        spdlog::error("Failed to load scene: {}", path.string());
+    }
+}
+
+void Renderer::LoadEnvMap(const std::filesystem::path& path)
+{
+    queue->waitOnHost();
+
+    int width, height, channels;
+    float* pixels = stbi_loadf(path.string().c_str(), &width, &height, &channels, 4);
+    if (!pixels)
+    {
+        spdlog::error("Failed to load environment map: {}", path.string());
         return;
     }
 
-    AddRenderPass(std::make_unique<VBufferPass>(device, scene));
-    AddRenderPass(std::make_unique<BaseColorDebugPass>(device, scene));
-    AddRenderPass(std::make_unique<BlitPass>(device, this->surface));
+    rhi::TextureDesc desc = {};
+    desc.type = rhi::TextureType::Texture2D;
+    desc.size = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
+    desc.format = rhi::Format::RGBA32Float;
+    desc.usage = rhi::TextureUsage::ShaderResource;
+    desc.defaultState = rhi::ResourceState::ShaderResource;
+
+    rhi::SubresourceData initData = {};
+    initData.data = pixels;
+    initData.rowPitch = width * 4 * sizeof(float);
+
+    resources->envMap = device->createTexture(desc, &initData);
+    stbi_image_free(pixels);
+
+    if (!resources->envMap)
+    {
+        spdlog::error("Failed to create environment map texture");
+        return;
+    }
+
+    if (!resources->envSampler)
+    {
+        rhi::SamplerDesc samplerDesc = {};
+        samplerDesc.minFilter = rhi::TextureFilteringMode::Linear;
+        samplerDesc.magFilter = rhi::TextureFilteringMode::Linear;
+        samplerDesc.addressU = rhi::TextureAddressingMode::Wrap;
+        samplerDesc.addressV = rhi::TextureAddressingMode::ClampToEdge;
+        resources->envSampler = device->createSampler(samplerDesc);
+    }
+
+    spdlog::info("Loaded environment map: {} ({}x{})", path.filename().string(), width, height);
 }
 
 void Renderer::AddRenderPass(std::unique_ptr<IRenderPass> pass)
@@ -82,16 +117,26 @@ void Renderer::AddRenderPass(std::unique_ptr<IRenderPass> pass)
 
 void Renderer::OnRenderUI()
 {
-    // Main menu bar
+    // Main Menu Bar
     if (ImGui::BeginMainMenuBar())
     {
         if (ImGui::BeginMenu("File"))
         {
             if (ImGui::MenuItem("Load Scene...", "Ctrl+O"))
             {
-                auto path = OpenFileDialog(window);
-                if (!path.empty())
+                if (const auto path = OpenFileDialog(window, "glTF Files\0*.gltf;*.glb\0All Files\0*.*\0"); !path.empty())
+                {
                     pendingScenePath = path;
+                    dirtyFlags |= DirtyScene;
+                }
+            }
+            if (ImGui::MenuItem("Load Environment Map..."))
+            {
+                if (const auto path = OpenFileDialog(window, "HDR Images\0*.hdr;*.exr\0All Files\0*.*\0"); !path.empty())
+                {
+                    pendingEnvMapPath = path;
+                    dirtyFlags |= DirtyEnvMap;
+                }
             }
             ImGui::Separator();
             if (ImGui::MenuItem("Exit"))
@@ -102,7 +147,7 @@ void Renderer::OnRenderUI()
         {
             ImGui::MenuItem("Show UI", nullptr, &showUI);
             if (ImGui::MenuItem("VSync", nullptr, &vsync))
-                pendingVSyncChange = true;
+                dirtyFlags |= DirtyVSync;
             ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();
@@ -131,6 +176,15 @@ void Renderer::OnRenderUI()
         }
     }
 
+    // Environment
+    if (ImGui::CollapsingHeader("Environment", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        if (resources->envMap)
+            ImGui::Text("Environment map loaded");
+        else
+            ImGui::TextDisabled("No environment map");
+    }
+
     // Camera
     if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen))
     {
@@ -152,7 +206,7 @@ void Renderer::OnRenderUI()
 
     ImGui::End();
 
-    // Floating FPS overlay (top-left, like Falcor)
+    // Floating FPS overlay
     ImGui::SetNextWindowPos(ImVec2(10, 30), ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(0.5f);
     ImGui::Begin("##fps", nullptr,
@@ -201,7 +255,6 @@ bool Renderer::BeginFrame()
     if (!encoder)
         return false;
 
-    imguiPass->BeginFrame();
     return true;
 }
 
@@ -215,20 +268,27 @@ void Renderer::EndFrame()
 
 void Renderer::OnRender()
 {
-    if (!pendingScenePath.empty())
+    if (dirtyFlags & DirtyScene)
     {
         LoadScene(pendingScenePath);
         pendingScenePath.clear();
     }
 
-    if (pendingVSyncChange)
+    if (dirtyFlags & DirtyEnvMap)
     {
-        pendingVSyncChange = false;
+        LoadEnvMap(pendingEnvMapPath);
+        pendingEnvMapPath.clear();
+    }
+
+    if (dirtyFlags & DirtyVSync)
+    {
         queue->waitOnHost();
         auto config = *surface->getConfig();
         config.vsync = vsync;
         surface->configure(config);
     }
+
+    dirtyFlags = DirtyNone;
 
     if (!BeginFrame())
         return;
@@ -236,8 +296,9 @@ void Renderer::OnRender()
     for (const auto& pass : renderPasses)
         pass->Execute(encoder, *resources);
 
+    gui->BeginFrame();
     OnRenderUI();
-    imguiPass->Execute(encoder, *resources);
+    gui->Render(encoder, resources->backBuffer);
 
     EndFrame();
 }

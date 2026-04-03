@@ -10,12 +10,13 @@ struct Resources
 {
     Slang::ComPtr<rhi::ITexture> backBuffer;
     Slang::ComPtr<rhi::ITexture> vBuffer;
-    Slang::ComPtr<rhi::ITexture> colorOutput;
     Slang::ComPtr<rhi::IBuffer> cameraBuffer;
-    CameraData cameraData;
+    Slang::ComPtr<rhi::ITexture> envMap;
+    Slang::ComPtr<rhi::ISampler> envSampler;
+    CameraData cameraData{};
 
-    explicit Resources(Slang::ComPtr<rhi::IDevice> device, const uint32_t width, const uint32_t height)
-        : device(std::move(device)), width(width), height(height)
+    explicit Resources(rhi::IDevice* device, const uint32_t width, const uint32_t height)
+        : device(device), width(width), height(height)
     {
         CreateTextures();
     }
@@ -32,7 +33,7 @@ struct Resources
 private:
     void CreateTextures()
     {
-        // V-Buffer: R32G32_UINT = (instanceID | primitiveID packed, barycentrics packed)
+        // V-Buffer: R32G32_UINT = (instanceID | primitiveID packed, barycentric packed)
         rhi::TextureDesc vbufDesc = {};
         vbufDesc.type = rhi::TextureType::Texture2D;
         vbufDesc.size = {width, height, 1};
@@ -42,17 +43,6 @@ private:
         vbufDesc.memoryType = rhi::MemoryType::DeviceLocal;
 
         vBuffer = device->createTexture(vbufDesc);
-
-        // Color output: RGBA8 for shading result
-        rhi::TextureDesc colorDesc = {};
-        colorDesc.type = rhi::TextureType::Texture2D;
-        colorDesc.size = {width, height, 1};
-        colorDesc.format = rhi::Format::RGBA32Float;
-        colorDesc.usage = rhi::TextureUsage::ShaderResource | rhi::TextureUsage::UnorderedAccess;
-        colorDesc.defaultState = rhi::ResourceState::UnorderedAccess;
-        colorDesc.memoryType = rhi::MemoryType::DeviceLocal;
-
-        colorOutput = device->createTexture(colorDesc);
 
         // Camera constant buffer
         rhi::BufferDesc camDesc = {};

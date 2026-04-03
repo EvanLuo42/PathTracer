@@ -1,14 +1,17 @@
-#include "ImGuiPass.h"
-#include "../Program.h"
-#include "../RenderPipeline.h"
+#include "Gui.h"
+#include "Core/Program.h"
+#include "Core/ShaderVar.h"
 
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
-#include <iostream>
+
+#include <spdlog/spdlog.h>
 
 using namespace rhi;
 
-ImGuiPass::ImGuiPass(IDevice* device, ISurface* surface, GLFWwindow* window)
-    : device(device), surface(surface), window(window)
+Gui::Gui(IDevice* device, ISurface* surface, GLFWwindow* window) : device(device), surface(surface), window(window)
 {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -20,13 +23,13 @@ ImGuiPass::ImGuiPass(IDevice* device, ISurface* surface, GLFWwindow* window)
     CreatePipeline();
 }
 
-ImGuiPass::~ImGuiPass()
+Gui::~Gui()
 {
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 }
 
-void ImGuiPass::CreateFontTexture()
+void Gui::CreateFontTexture()
 {
     unsigned char* pixels;
     int width, height;
@@ -46,7 +49,7 @@ void ImGuiPass::CreateFontTexture()
     fontTexture = device->createTexture(desc, &initData);
     if (!fontTexture)
     {
-        std::cerr << "[ImGuiPass] Failed to create font texture" << std::endl;
+        spdlog::error("Failed to create font texture");
         return;
     }
 
@@ -58,21 +61,15 @@ void ImGuiPass::CreateFontTexture()
     fontSampler = device->createSampler(samplerDesc);
 }
 
-void ImGuiPass::CreatePipeline()
+void Gui::CreatePipeline()
 {
-    // Program
-    auto program = Program::Create(device, Program::Desc()
-        .AddShaderModule("ImGui")
-        .VSEntry("vertexMain")
-        .FSEntry("fragmentMain")
-    );
-    if (!program)
+    Program program(device, "Renderer/ImGui");
+    if (!program.GetShaderProgram())
         return;
 
-    // Input layout
-    VertexStreamDesc vertexStreams[] = {
-        {sizeof(ImDrawVert), InputSlotClass::PerVertex, 0},
-    };
+    // ImDrawVert layout must be specified manually because the shader declares
+    // float4 color (RGBA32Float) while ImDrawVert::col is ImU32 (RGBA8Unorm).
+    VertexStreamDesc vertexStream = {sizeof(ImDrawVert), InputSlotClass::PerVertex, 0};
     InputElementDesc inputElements[] = {
         {"POSITION", 0, Format::RG32Float, offsetof(ImDrawVert, pos), 0},
         {"TEXCOORD", 0, Format::RG32Float, offsetof(ImDrawVert, uv), 0},
@@ -81,11 +78,10 @@ void ImGuiPass::CreatePipeline()
     InputLayoutDesc inputLayoutDesc = {};
     inputLayoutDesc.inputElements = inputElements;
     inputLayoutDesc.inputElementCount = SLANG_COUNT_OF(inputElements);
-    inputLayoutDesc.vertexStreams = vertexStreams;
-    inputLayoutDesc.vertexStreamCount = SLANG_COUNT_OF(vertexStreams);
+    inputLayoutDesc.vertexStreams = &vertexStream;
+    inputLayoutDesc.vertexStreamCount = 1;
     device->createInputLayout(inputLayoutDesc, inputLayout.writeRef());
 
-    // Blend for alpha compositing
     ColorTargetDesc colorTarget = {};
     colorTarget.format = surface->getInfo().preferredFormat;
     colorTarget.enableBlend = true;
@@ -99,16 +95,22 @@ void ImGuiPass::CreatePipeline()
     RasterizerDesc rasterizer = {};
     rasterizer.cullMode = CullMode::None;
 
-    pipeline = RenderPipeline::Create(device, RenderPipeline::Desc()
-        .SetProgram(program)
-        .SetInputLayout(inputLayout)
-        .AddRenderTarget(colorTarget)
-        .SetDepthStencil(depthStencil)
-        .SetRasterizer(rasterizer)
-    );
+    RenderPipelineDesc pipelineDesc = {};
+    pipelineDesc.program = program.GetShaderProgram();
+    pipelineDesc.inputLayout = inputLayout;
+    pipelineDesc.primitiveTopology = PrimitiveTopology::TriangleList;
+    pipelineDesc.targets = &colorTarget;
+    pipelineDesc.targetCount = 1;
+    pipelineDesc.depthStencil = depthStencil;
+    pipelineDesc.rasterizer = rasterizer;
+    pipelineDesc.label = program.GetName();
+
+    pipeline = device->createRenderPipeline(pipelineDesc);
+    if (!pipeline)
+        spdlog::error("Failed to create pipeline");
 }
 
-void ImGuiPass::UpdateBuffers(ImDrawData* drawData)
+void Gui::UpdateBuffers(ImDrawData* drawData)
 {
     const auto vtxSize = static_cast<uint64_t>(drawData->TotalVtxCount) * sizeof(ImDrawVert);
     const auto idxSize = static_cast<uint64_t>(drawData->TotalIdxCount) * sizeof(ImDrawIdx);
@@ -156,13 +158,13 @@ void ImGuiPass::UpdateBuffers(ImDrawData* drawData)
     device->unmapBuffer(indexBuffer);
 }
 
-void ImGuiPass::BeginFrame()
+void Gui::BeginFrame()
 {
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 }
 
-void ImGuiPass::Execute(ICommandEncoder* encoder, Resources& resources)
+void Gui::Render(ICommandEncoder* encoder, ITexture* backBuffer)
 {
     ImGui::Render();
     ImDrawData* drawData = ImGui::GetDrawData();
@@ -172,7 +174,7 @@ void ImGuiPass::Execute(ICommandEncoder* encoder, Resources& resources)
     UpdateBuffers(drawData);
 
     RenderPassColorAttachment colorAttachment = {};
-    colorAttachment.view = resources.backBuffer->getDefaultView();
+    colorAttachment.view = backBuffer->getDefaultView();
     colorAttachment.loadOp = LoadOp::Load;
     colorAttachment.storeOp = StoreOp::Store;
 
@@ -181,9 +183,9 @@ void ImGuiPass::Execute(ICommandEncoder* encoder, Resources& resources)
     renderPassDesc.colorAttachmentCount = 1;
 
     IRenderPassEncoder* passEncoder = encoder->beginRenderPass(renderPassDesc);
-    passEncoder->pushDebugGroup(GetName(), kPassColor);
+    passEncoder->pushDebugGroup("ImGui", {1.0f, 0.8f, 0.2f});
 
-    ShaderVar vars(passEncoder->bindPipeline(pipeline));
+    const ShaderVar vars(passEncoder->bindPipeline(pipeline));
 
     const auto scale = glm::vec2(2.0f / drawData->DisplaySize.x, -2.0f / drawData->DisplaySize.y);
     const auto translate = glm::vec2(-1.0f - drawData->DisplayPos.x * scale.x, 1.0f - drawData->DisplayPos.y * scale.y);
@@ -214,10 +216,14 @@ void ImGuiPass::Execute(ICommandEncoder* encoder, Resources& resources)
             const ImVec2 clipScale = drawData->FramebufferScale;
             ImVec2 clipMin((cmd.ClipRect.x - clipOff.x) * clipScale.x, (cmd.ClipRect.y - clipOff.y) * clipScale.y);
             ImVec2 clipMax((cmd.ClipRect.z - clipOff.x) * clipScale.x, (cmd.ClipRect.w - clipOff.y) * clipScale.y);
-            if (clipMin.x < 0.0f) clipMin.x = 0.0f;
-            if (clipMin.y < 0.0f) clipMin.y = 0.0f;
-            if (clipMax.x > static_cast<float>(fbWidth)) clipMax.x = static_cast<float>(fbWidth);
-            if (clipMax.y > static_cast<float>(fbHeight)) clipMax.y = static_cast<float>(fbHeight);
+            if (clipMin.x < 0.0f)
+                clipMin.x = 0.0f;
+            if (clipMin.y < 0.0f)
+                clipMin.y = 0.0f;
+            if (clipMax.x > static_cast<float>(fbWidth))
+                clipMax.x = static_cast<float>(fbWidth);
+            if (clipMax.y > static_cast<float>(fbHeight))
+                clipMax.y = static_cast<float>(fbHeight);
             if (clipMax.x <= clipMin.x || clipMax.y <= clipMin.y)
                 continue;
 

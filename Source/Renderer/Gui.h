@@ -1,32 +1,27 @@
 #pragma once
 
-#include "IRenderPass.h"
-
-#include "../ShaderVar.h"
-
 #include <slang-rhi.h>
+#include <slang-com-ptr.h>
 
-#include <imgui.h>
-#include <imgui_impl_glfw.h>
-#include <GLFW/glfw3.h>
+struct ImDrawData;
+struct GLFWwindow;
 
-class ImGuiPass : public IRenderPass
+class Gui
 {
 public:
-    ImGuiPass(rhi::IDevice* device, rhi::ISurface* surface, GLFWwindow* window);
-    ~ImGuiPass() override;
+    Gui(rhi::IDevice* device, rhi::ISurface* surface, GLFWwindow* window);
+    ~Gui();
 
     void BeginFrame();
-    const char* GetName() const override { return "ImGui"; }
-    void Execute(rhi::ICommandEncoder* encoder, Resources& resources) override;
+    void Render(rhi::ICommandEncoder* encoder, rhi::ITexture* backBuffer);
 
 private:
     void CreateFontTexture();
     void CreatePipeline();
     void UpdateBuffers(ImDrawData* drawData);
 
-    rhi::IDevice* device;
-    rhi::ISurface* surface;
+    Slang::ComPtr<rhi::IDevice> device;
+    Slang::ComPtr<rhi::ISurface> surface;
     GLFWwindow* window;
 
     Slang::ComPtr<rhi::IRenderPipeline> pipeline;
