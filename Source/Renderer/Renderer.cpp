@@ -4,6 +4,9 @@
 #include <spdlog/spdlog.h>
 #include <stb_image.h>
 
+#include <cmath>
+#include <vector>
+
 #if SLANG_WINDOWS_FAMILY
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -13,6 +16,8 @@
 
 namespace
 {
+    constexpr float kPi = 3.14159265358979323846f;
+
     std::filesystem::path OpenFileDialog(GLFWwindow* window, const char* filter)
     {
 #if SLANG_WINDOWS_FAMILY
@@ -72,20 +77,16 @@ void Renderer::BuildGraph()
 {
     graph = std::make_unique<RenderGraph>(device);
 
-    auto backBufferSlot = graph->importTexture("backBuffer", nullptr);
     auto colorFormat = surface->getConfig()->format;
 
-    // GBuffer pass
-    auto* gbuffer = graph->addPass<GBufferRasterPass>("GBufferRaster", device.get(), scene, &camera);
+    // VBuffer RT → PathTracer
+    auto* vbuf = graph->addPass<VBufferRTPass>("VBufferRT", device.get(), scene, &camera);
+    pathTracer = graph->addPass<PathTracerPass>("PathTracer", device.get(), colorFormat, scene, &camera);
+    if (envMap && envSampler)
+        pathTracer->SetEnvMap(envMap, envSampler, envImportanceCdf, envMapWidth, envMapHeight);
 
-    // Forward pass — draws baseColor to backBuffer for now
-    auto* forward = graph->addPass<ForwardPass>("Forward", device.get(), colorFormat, scene, &camera);
-
-    graph->addEdge(backBufferSlot, forward->colorIn);
-    graph->markOutput(forward->colorIn);
-
-    // Mark a gbuffer output so it doesn't get culled
-    graph->markOutput(gbuffer->baseColor);
+    graph->addEdge(vbuf->vbuffer, pathTracer->vbufferIn);
+    graph->markOutput(pathTracer->output);
 
     int w, h;
     glfwGetFramebufferSize(window, &w, &h);
@@ -116,13 +117,56 @@ void Renderer::LoadEnvMap(const std::filesystem::path& path)
     initData.rowPitch = width * 4 * sizeof(float);
 
     envMap = device->createTexture(desc, &initData);
-    stbi_image_free(pixels);
-
     if (!envMap)
     {
+        stbi_image_free(pixels);
         spdlog::error("Failed to create environment map texture");
         return;
     }
+
+    std::vector<float> importanceCdf(static_cast<size_t>(width) * static_cast<size_t>(height));
+    double totalWeight = 0.0;
+    for (int y = 0; y < height; y++)
+    {
+        const float theta = (static_cast<float>(y) + 0.5f) * kPi / static_cast<float>(height);
+        const float sinTheta = (std::max)(std::sin(theta), 1e-4f);
+
+        for (int x = 0; x < width; x++)
+        {
+            const size_t index = static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x);
+            const float* texel = pixels + index * 4;
+            const float luminance =
+                0.2126f * (std::max)(texel[0], 0.0f) +
+                0.7152f * (std::max)(texel[1], 0.0f) +
+                0.0722f * (std::max)(texel[2], 0.0f);
+            totalWeight += (std::max)(luminance, 1e-4f) * sinTheta;
+            importanceCdf[index] = static_cast<float>(totalWeight);
+        }
+    }
+
+    if (totalWeight > 0.0)
+    {
+        const float invTotalWeight = static_cast<float>(1.0 / totalWeight);
+        for (float& value : importanceCdf)
+            value *= invTotalWeight;
+
+        rhi::BufferDesc cdfDesc = {};
+        cdfDesc.size = importanceCdf.size() * sizeof(float);
+        cdfDesc.elementSize = sizeof(float);
+        cdfDesc.usage = rhi::BufferUsage::ShaderResource;
+        cdfDesc.defaultState = rhi::ResourceState::ShaderResource;
+        envImportanceCdf = device->createBuffer(cdfDesc, importanceCdf.data());
+        if (!envImportanceCdf)
+            spdlog::warn("Failed to create environment importance sampling buffer");
+    }
+    else
+    {
+        envImportanceCdf.setNull();
+    }
+
+    envMapWidth = static_cast<uint32_t>(width);
+    envMapHeight = static_cast<uint32_t>(height);
+    stbi_image_free(pixels);
 
     if (!envSampler)
     {
@@ -133,6 +177,9 @@ void Renderer::LoadEnvMap(const std::filesystem::path& path)
         samplerDesc.addressV = rhi::TextureAddressingMode::ClampToEdge;
         envSampler = device->createSampler(samplerDesc);
     }
+
+    if (pathTracer)
+        pathTracer->SetEnvMap(envMap, envSampler, envImportanceCdf, envMapWidth, envMapHeight);
 
     spdlog::info("Loaded environment map: {} ({}x{})", path.filename().string(), width, height);
 }
@@ -307,11 +354,23 @@ void Renderer::OnRender()
     if (!BeginFrame())
         return;
 
-    // Update graph's back buffer import each frame
-    graph->importTexture("backBuffer", backBuffer, rhi::ResourceState::Undefined);
-
     // Execute render graph
     graph->execute(encoder);
+
+    // Copy path tracer output to back buffer
+    if (pathTracer)
+    {
+        auto* ptOutput = graph->getTexture(pathTracer->output);
+        if (ptOutput)
+        {
+            auto desc = ptOutput->getDesc();
+            rhi::SubresourceRange subresource = {};
+            subresource.layerCount = 1;
+            subresource.mipCount = 1;
+            rhi::Extent3D extent = {desc.size.width, desc.size.height, 1};
+            encoder->copyTexture(backBuffer, subresource, {}, ptOutput, subresource, {}, extent);
+        }
+    }
 
     // GUI (outside of graph)
     gui->BeginFrame();

@@ -18,6 +18,7 @@ struct Vertex
     glm::vec3 position;
     glm::vec3 normal;
     glm::vec2 texCoord;
+    glm::vec4 tangent; // xyz = tangent direction, w = handedness (+1 or -1)
 };
 
 enum class AlphaMode : int32_t { Opaque = 0, Mask = 1, Blend = 2 };
@@ -112,6 +113,19 @@ struct MeshInfo
     uint32_t materialIndex;
 };
 
+struct InstanceTransform
+{
+    glm::vec4 modelRow0 = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
+    glm::vec4 modelRow1 = glm::vec4(0.0f, 1.0f, 0.0f, 0.0f);
+    glm::vec4 modelRow2 = glm::vec4(0.0f, 0.0f, 1.0f, 0.0f);
+    glm::vec4 modelRow3 = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+    glm::vec4 normalRow0 = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
+    glm::vec4 normalRow1 = glm::vec4(0.0f, 1.0f, 0.0f, 0.0f);
+    glm::vec4 normalRow2 = glm::vec4(0.0f, 0.0f, 1.0f, 0.0f);
+    glm::vec4 _pad = glm::vec4(0.0f);
+};
+
 class Scene
 {
 public:
@@ -155,6 +169,7 @@ private:
     std::vector<Material> materials;
     std::vector<Light> lights;
     std::vector<MeshInfo> meshInfos;
+    std::vector<InstanceTransform> instanceTransforms;
     uint32_t totalIndexCount = 0;
     uint32_t lightCount = 0;
 
@@ -176,6 +191,7 @@ private:
     Slang::ComPtr<rhi::IBuffer> materialBuffer;
     Slang::ComPtr<rhi::IBuffer> lightBuffer;
     Slang::ComPtr<rhi::IBuffer> meshInfoBuffer;
+    Slang::ComPtr<rhi::IBuffer> instanceTransformBuffer;
 
     // Bindless handles
     rhi::DescriptorHandle vertexBufferHandle;
@@ -183,12 +199,14 @@ private:
     rhi::DescriptorHandle materialBufferHandle;
     rhi::DescriptorHandle lightBufferHandle;
     rhi::DescriptorHandle meshInfoBufferHandle;
+    rhi::DescriptorHandle instanceTransformBufferHandle;
 
     // Textures
     struct TextureData
     {
         std::vector<uint8_t> pixels;
         int width, height, channels;
+        bool isSRGB = false; // true for base color and emissive textures
     };
     std::vector<TextureData> textureDataList;
     std::vector<Slang::ComPtr<rhi::ITexture>> textures;

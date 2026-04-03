@@ -46,6 +46,9 @@ public:
     void resize(uint32_t width, uint32_t height);
     void onRenderUI();
 
+    // Get the physical texture backing a slot (after compile)
+    rhi::ITexture* getTexture(const RenderGraphSlot& slot) const;
+
 private:
     void addPassInternal(const std::string& name, std::unique_ptr<RenderPass> pass);
 

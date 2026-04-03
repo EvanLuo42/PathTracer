@@ -4,6 +4,7 @@ struct ShadingData
 {
     float3 position;
     float3 normal;
+    float3 geometryNormal; // unperturbed normal (for bias/backface)
     float2 texCoord;
     Material material;
 
@@ -11,7 +12,36 @@ struct ShadingData
     float3 emissive;
     float metallic;
     float roughness;
+    float occlusion;
 };
+
+float3 transformPoint(InstanceTransform transform, float3 position)
+{
+    float4 p = float4(position, 1.0);
+    return float3(
+        dot(transform.modelRow0, p),
+        dot(transform.modelRow1, p),
+        dot(transform.modelRow2, p)
+    );
+}
+
+float3 transformDirection(InstanceTransform transform, float3 direction)
+{
+    return float3(
+        dot(transform.modelRow0.xyz, direction),
+        dot(transform.modelRow1.xyz, direction),
+        dot(transform.modelRow2.xyz, direction)
+    );
+}
+
+float3 transformNormal(InstanceTransform transform, float3 normal)
+{
+    return normalize(float3(
+        dot(transform.normalRow0.xyz, normal),
+        dot(transform.normalRow1.xyz, normal),
+        dot(transform.normalRow2.xyz, normal)
+    ));
+}
 
 Vertex interpolateVertex(uint instanceID, uint primitiveID, float2 barycentrics)
 {
@@ -31,6 +61,9 @@ Vertex interpolateVertex(uint instanceID, uint primitiveID, float2 barycentrics)
     result.position = w * v0.position + barycentrics.x * v1.position + barycentrics.y * v2.position;
     result.normal = normalize(w * v0.normal + barycentrics.x * v1.normal + barycentrics.y * v2.normal);
     result.texCoord = w * v0.texCoord + barycentrics.x * v1.texCoord + barycentrics.y * v2.texCoord;
+    result.tangent = w * v0.tangent + barycentrics.x * v1.tangent + barycentrics.y * v2.tangent;
+    // Preserve handedness sign
+    result.tangent = float4(normalize(result.tangent.xyz), result.tangent.w > 0 ? 1.0 : -1.0);
     return result;
 }
 
@@ -38,17 +71,36 @@ ShadingData prepareShadingData(uint instanceID, uint primitiveID, float2 barycen
 {
     Vertex v = interpolateVertex(instanceID, primitiveID, barycentrics);
     Material mat = gScene.materials[gScene.meshInfos[instanceID].materialIndex];
+    InstanceTransform transform = gScene.instanceTransforms[instanceID];
 
     ShadingData sd;
-    sd.position = v.position;
-    sd.normal = v.normal;
+    sd.position = transformPoint(transform, v.position);
+    sd.geometryNormal = transformNormal(transform, v.normal);
     sd.texCoord = v.texCoord;
     sd.material = mat;
 
+    // Normal mapping
+    float3 N = sd.geometryNormal;
+    if (mat.normalTextureIndex >= 0)
+    {
+        float3 T = normalize(transformDirection(transform, v.tangent.xyz));
+        T = normalize(T - N * dot(N, T));
+        float3 B = normalize(cross(N, T)) * v.tangent.w;
+        float3x3 TBN = float3x3(T, B, N);
+
+        float3 normalSample = gScene.textures[mat.normalTextureIndex].Sample(gScene.sampler, v.texCoord).rgb;
+        float3 tangentNormal = normalSample * 2.0 - 1.0;
+        tangentNormal.xy *= mat.normalScale;
+        N = normalize(mul(tangentNormal, TBN));
+    }
+    sd.normal = N;
+
+    // Base color
     sd.baseColor = mat.baseColor;
     if (mat.baseColorTextureIndex >= 0)
         sd.baseColor *= gScene.textures[mat.baseColorTextureIndex].Sample(gScene.sampler, v.texCoord);
 
+    // Metallic / roughness
     sd.metallic = mat.metallic;
     sd.roughness = mat.roughness;
     if (mat.metallicRoughnessTextureIndex >= 0)
@@ -58,9 +110,18 @@ ShadingData prepareShadingData(uint instanceID, uint primitiveID, float2 barycen
         sd.metallic *= mr.b;
     }
 
+    // Emissive
     sd.emissive = mat.emissiveColor * mat.emissiveStrength;
     if (mat.emissiveTextureIndex >= 0)
         sd.emissive *= gScene.textures[mat.emissiveTextureIndex].Sample(gScene.sampler, v.texCoord).rgb;
+
+    // Occlusion
+    sd.occlusion = 1.0;
+    if (mat.occlusionTextureIndex >= 0)
+    {
+        float ao = gScene.textures[mat.occlusionTextureIndex].Sample(gScene.sampler, v.texCoord).r;
+        sd.occlusion = lerp(1.0, ao, mat.occlusionStrength);
+    }
 
     return sd;
 }

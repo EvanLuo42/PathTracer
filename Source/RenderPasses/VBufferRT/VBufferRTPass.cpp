@@ -25,6 +25,7 @@ void VBufferRTPass::CreatePipeline()
     pipelineDesc.maxRecursion = 1;
     pipelineDesc.hitGroupCount = 1;
     pipelineDesc.hitGroups = &hitGroup;
+    pipelineDesc.label = "VBufferRTPass";
 
     auto result = device->createRayTracingPipeline(pipelineDesc, pipeline.writeRef());
     if (SLANG_FAILED(result))
@@ -53,7 +54,7 @@ void VBufferRTPass::CreatePipeline()
 
 void VBufferRTPass::Setup()
 {
-    vbuffer = addOutput("vbuffer", Format::RG32Uint, PassSlot::Access::UnorderedAccess,
+    vbuffer = addOutput("vbuffer", Format::RGBA32Uint, PassSlot::Access::UnorderedAccess,
                         SizePolicy::BackBuffer(), LoadOp::Load, 0);
     markSideEffect();
 }
@@ -82,7 +83,7 @@ void VBufferRTPass::Execute(ICommandEncoder* encoder, const RenderGraphResources
         camera->Bind(vars);
 
     scene->Bind(vars);
-    vars["gVBuffer"] = Slang::ComPtr<ITexture>(vbufTex);
+    vars["gVBuffer"] = ComPtr(vbufTex);
 
     auto desc = vbufTex->getDesc();
     pass->dispatchRays(0, desc.size.width, desc.size.height, 1);

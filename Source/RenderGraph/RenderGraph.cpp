@@ -262,7 +262,7 @@ void RenderGraph::createGpuResources()
         desc.type = TextureType::Texture2D;
         desc.size = {w, h, 1};
         desc.format = phys.desc.format;
-        desc.usage = phys.accumulatedUsage;
+        desc.usage = phys.accumulatedUsage | TextureUsage::CopySource | TextureUsage::CopyDestination;
         desc.defaultState = ResourceState::Undefined;
         desc.memoryType = MemoryType::DeviceLocal;
         desc.label = phys.desc.name.c_str();
@@ -476,6 +476,15 @@ void RenderGraph::resize(uint32_t width, uint32_t height)
     bbHeight = height;
     createGpuResources();
     planBarriers();
+}
+
+ITexture* RenderGraph::getTexture(const RenderGraphSlot& slot) const
+{
+    auto key = std::to_string(slot.passIndex) + ":" + slot.name;
+    auto it = slotToPhysical.find(key);
+    if (it == slotToPhysical.end())
+        return nullptr;
+    return physicalResources[it->second].texture;
 }
 
 void RenderGraph::onRenderUI()

@@ -18,6 +18,26 @@ using namespace rhi;
 
 namespace
 {
+    glm::vec4 GetRow(const glm::mat4& matrix, const int row)
+    {
+        return {
+            matrix[0][row],
+            matrix[1][row],
+            matrix[2][row],
+            matrix[3][row]
+        };
+    }
+
+    glm::vec4 GetRow(const glm::mat3& matrix, const int row)
+    {
+        return {
+            matrix[0][row],
+            matrix[1][row],
+            matrix[2][row],
+            0.0f
+        };
+    }
+
     glm::mat4 GetNodeTransform(const tinygltf::Node& node)
     {
         if (!node.matrix.empty())
@@ -82,6 +102,7 @@ namespace
 
         glm::vec2 vec2(size_t i) const { return {data[i * stride], data[i * stride + 1]}; }
         glm::vec3 vec3(size_t i) const { return {data[i * stride], data[i * stride + 1], data[i * stride + 2]}; }
+        glm::vec4 vec4(size_t i) const { return {data[i * stride], data[i * stride + 1], data[i * stride + 2], data[i * stride + 3]}; }
     };
 }
 
@@ -222,6 +243,16 @@ void Scene::LoadMaterials(const tinygltf::Model& model)
         return resolveTexture(texInfo.Get("index").GetNumberAsInt());
     };
 
+    // Helper to mark a texture image as sRGB
+    auto markSRGB = [&](int textureIndex)
+    {
+        if (textureIndex < 0 || textureIndex >= static_cast<int>(model.textures.size()))
+            return;
+        int imageIndex = model.textures[textureIndex].source;
+        if (imageIndex >= 0 && imageIndex < static_cast<int>(textureDataList.size()))
+            textureDataList[imageIndex].isSRGB = true;
+    };
+
     for (const auto& mat : model.materials)
     {
         Material material;
@@ -239,6 +270,9 @@ void Scene::LoadMaterials(const tinygltf::Model& model)
         material.baseColorTextureIndex = resolveTexture(pbr.baseColorTexture.index);
         material.metallicRoughnessTextureIndex = resolveTexture(pbr.metallicRoughnessTexture.index);
 
+        // Mark color textures as sRGB (per glTF spec)
+        markSRGB(pbr.baseColorTexture.index);
+
         // Core glTF
         material.emissiveColor = glm::vec3(
             static_cast<float>(mat.emissiveFactor[0]),
@@ -248,6 +282,7 @@ void Scene::LoadMaterials(const tinygltf::Model& model)
         material.normalTextureIndex = resolveTexture(mat.normalTexture.index);
         material.normalScale = static_cast<float>(mat.normalTexture.scale);
         material.emissiveTextureIndex = resolveTexture(mat.emissiveTexture.index);
+        markSRGB(mat.emissiveTexture.index);
         material.occlusionTextureIndex = resolveTexture(mat.occlusionTexture.index);
         material.occlusionStrength = static_cast<float>(mat.occlusionTexture.strength);
         material.doubleSided = mat.doubleSided ? 1 : 0;
@@ -499,6 +534,7 @@ void Scene::LoadPrimitive(const tinygltf::Model& model, const tinygltf::Primitiv
     auto pos = AccessorView::Get(model, primitive, "POSITION");
     auto norm = AccessorView::Get(model, primitive, "NORMAL");
     auto uv = AccessorView::Get(model, primitive, "TEXCOORD_0");
+    auto tan = AccessorView::Get(model, primitive, "TANGENT");
 
     const auto& posAccessor = model.accessors[primitive.attributes.at("POSITION")];
     geom.vertexCount = static_cast<uint32_t>(posAccessor.count);
@@ -509,6 +545,7 @@ void Scene::LoadPrimitive(const tinygltf::Model& model, const tinygltf::Primitiv
         v.position = pos.vec3(i);
         v.normal = norm ? norm.vec3(i) : glm::vec3(0, 1, 0);
         v.texCoord = uv ? uv.vec2(i) : glm::vec2(0);
+        v.tangent = tan ? tan.vec4(i) : glm::vec4(1, 0, 0, 1);
         vertices.push_back(v);
     }
 
@@ -549,6 +586,18 @@ void Scene::LoadPrimitive(const tinygltf::Model& model, const tinygltf::Primitiv
 
     geom.transform = transform;
     meshGeometries.push_back(geom);
+
+    const glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(transform)));
+    InstanceTransform instanceTransform;
+    instanceTransform.modelRow0 = GetRow(transform, 0);
+    instanceTransform.modelRow1 = GetRow(transform, 1);
+    instanceTransform.modelRow2 = GetRow(transform, 2);
+    instanceTransform.modelRow3 = GetRow(transform, 3);
+    instanceTransform.normalRow0 = GetRow(normalMatrix, 0);
+    instanceTransform.normalRow1 = GetRow(normalMatrix, 1);
+    instanceTransform.normalRow2 = GetRow(normalMatrix, 2);
+    instanceTransforms.push_back(instanceTransform);
+
     totalIndexCount += geom.indexCount;
 }
 
@@ -580,6 +629,8 @@ bool Scene::BuildBuffers(IDevice* device)
         return false;
     if (!createBuffer(meshInfos, BufferUsage::None, meshInfoBuffer, meshInfoBufferHandle))
         return false;
+    if (!createBuffer(instanceTransforms, BufferUsage::None, instanceTransformBuffer, instanceTransformBufferHandle))
+        return false;
 
     return true;
 }
@@ -591,7 +642,7 @@ bool Scene::BuildTextures(IDevice* device)
         TextureDesc desc = {};
         desc.type = TextureType::Texture2D;
         desc.size = {static_cast<uint32_t>(td.width), static_cast<uint32_t>(td.height), 1};
-        desc.format = Format::RGBA8Unorm;
+        desc.format = td.isSRGB ? Format::RGBA8UnormSrgb : Format::RGBA8Unorm;
         desc.usage = TextureUsage::ShaderResource;
         desc.defaultState = ResourceState::ShaderResource;
 
@@ -770,6 +821,7 @@ void Scene::Bind(const ShaderVar& var) const
     scene["indices"] = indexBuffer;
     scene["materials"] = materialBuffer;
     scene["meshInfos"] = meshInfoBuffer;
+    scene["instanceTransforms"] = instanceTransformBuffer;
     if (lightBuffer)
         scene["lights"] = lightBuffer;
     scene["lightCount"] = lightCount;

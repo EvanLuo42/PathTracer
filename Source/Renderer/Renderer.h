@@ -6,6 +6,8 @@
 #include "RenderGraph/RenderGraph.h"
 #include "RenderPasses/Forward/ForwardPass.h"
 #include "RenderPasses/GBufferRaster/GBufferRasterPass.h"
+#include "RenderPasses/VBufferRT/VBufferRTPass.h"
+#include "RenderPasses/PathTracer/PathTracerPass.h"
 
 #include <slang-rhi.h>
 
@@ -56,11 +58,15 @@ private:
     // Environment map
     Slang::ComPtr<rhi::ITexture> envMap;
     Slang::ComPtr<rhi::ISampler> envSampler;
+    Slang::ComPtr<rhi::IBuffer> envImportanceCdf;
+    uint32_t envMapWidth = 0;
+    uint32_t envMapHeight = 0;
 
     // Subsystems
     std::unique_ptr<Gui> gui;
     std::unique_ptr<RenderGraph> graph;
     std::shared_ptr<Scene> scene;
+    PathTracerPass* pathTracer = nullptr;
 
     bool showUI = true;
     bool vsync = true;

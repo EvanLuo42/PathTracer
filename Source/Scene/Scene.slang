@@ -5,6 +5,7 @@ struct Vertex
     float3 position;
     float3 normal;
     float2 texCoord;
+    float4 tangent; // xyz = tangent direction, w = handedness
 };
 
 enum AlphaMode : int
@@ -84,6 +85,19 @@ struct MeshInfo
     uint materialIndex;
 };
 
+struct InstanceTransform
+{
+    float4 modelRow0;
+    float4 modelRow1;
+    float4 modelRow2;
+    float4 modelRow3;
+
+    float4 normalRow0;
+    float4 normalRow1;
+    float4 normalRow2;
+    float4 _pad;
+};
+
 struct Scene
 {
     StructuredBuffer<Vertex> vertices;
@@ -92,6 +106,7 @@ struct Scene
     StructuredBuffer<Light> lights;
     uint lightCount;
     StructuredBuffer<MeshInfo> meshInfos;
+    StructuredBuffer<InstanceTransform> instanceTransforms;
     RaytracingAccelerationStructure tlas;
     SamplerState sampler;
     Texture2D textures[16];

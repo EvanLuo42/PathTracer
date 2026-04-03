@@ -32,6 +32,8 @@ add_executable(PathTracer
         Source/RenderPasses/GBufferRaster/GBufferRasterPass.h
         Source/RenderPasses/GBufferRT/GBufferRTPass.cpp
         Source/RenderPasses/GBufferRT/GBufferRTPass.h
+        Source/RenderPasses/PathTracer/PathTracerPass.cpp
+        Source/RenderPasses/PathTracer/PathTracerPass.h
 )
 
 target_include_directories(PathTracer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/Source)
