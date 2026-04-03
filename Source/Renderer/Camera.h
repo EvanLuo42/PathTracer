@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../Core/ShaderVar.h"
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <imgui.h>
@@ -43,6 +45,27 @@ public:
         moveSpeed = 2.0f;
         mouseSensitivity = 0.15f;
         UpdateVectors();
+    }
+
+    void Bind(const ShaderVar& var) const
+    {
+        auto cam = var["gCamera"];
+        cam["viewMatrix"] = data.viewMatrix;
+        cam["projMatrix"] = data.projMatrix;
+        cam["invViewMatrix"] = data.invViewMatrix;
+        cam["invProjMatrix"] = data.invProjMatrix;
+        cam["viewProjMatrix"] = data.viewProjMatrix;
+        cam["invViewProjMatrix"] = data.invViewProjMatrix;
+        cam["position"] = data.position;
+        cam["fovY"] = data.fovY;
+        cam["forward"] = data.forward;
+        cam["aspectRatio"] = data.aspectRatio;
+        cam["up"] = data.up;
+        cam["nearZ"] = data.nearZ;
+        cam["right"] = data.right;
+        cam["farZ"] = data.farZ;
+        cam["jitter"] = data.jitter;
+        cam["frameIndex"] = data.frameIndex;
     }
 
     void OnUpdate(GLFWwindow* window, float deltaTime)
@@ -104,16 +127,15 @@ public:
         // (handled via callback, see SetScrollCallback)
     }
 
-    CameraData GetCameraData(float aspectRatio)
+    void Update(float aspectRatio)
     {
         constexpr float nearZ = 0.001f;
         constexpr float farZ = 10000.0f;
 
         const auto view = glm::lookAt(position, position + front, up);
-        const auto proj = glm::perspective(glm::radians(fovY), aspectRatio, nearZ, farZ);
+        const auto proj = glm::perspectiveRH_ZO(glm::radians(fovY), aspectRatio, nearZ, farZ);
         const auto viewProj = proj * view;
 
-        CameraData data;
         data.viewMatrix = glm::transpose(view);
         data.projMatrix = glm::transpose(proj);
         data.invViewMatrix = glm::transpose(glm::inverse(view));
@@ -133,9 +155,9 @@ public:
         data.jitter = glm::vec2(0.0f);
         data.frameIndex = frameIndex++;
         data._pad = 0.0f;
-
-        return data;
     }
+
+    [[nodiscard]] const CameraData& GetData() const { return data; }
 
     void OnScroll(double yOffset) { moveSpeed = glm::clamp(moveSpeed + static_cast<float>(yOffset) * 0.3f, 0.1f, 100.0f); }
 
@@ -172,7 +194,9 @@ private:
     float yaw, pitch;
     float mouseSensitivity;
 
+    CameraData data{};
     uint32_t frameIndex = 0;
     bool captured = false;
     double lastMouseX = 0, lastMouseY = 0;
+
 };

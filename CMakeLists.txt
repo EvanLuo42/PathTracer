@@ -11,15 +11,27 @@ add_executable(PathTracer
         Source/Renderer/Renderer.h
         Source/Application.cpp
         Source/Application.h
-        Source/Renderer/Resources.h
         Source/Scene/Scene.h
         Source/Scene/Scene.cpp
-        Source/RenderPasses/IRenderPass.h
         Source/Core/PipelineCache.h
         Source/Core/Program.cpp
         Source/Core/Program.h
         Source/Renderer/Gui.cpp
         Source/Renderer/Gui.h
+        Source/RenderGraph/RenderGraph.cpp
+        Source/RenderGraph/RenderGraph.h
+        Source/RenderGraph/RenderPass.h
+        Source/RenderGraph/ResourceDesc.h
+        Source/RenderPasses/Forward/ForwardPass.cpp
+        Source/RenderPasses/Forward/ForwardPass.h
+        Source/RenderPasses/VBufferRaster/VBufferRasterPass.cpp
+        Source/RenderPasses/VBufferRaster/VBufferRasterPass.h
+        Source/RenderPasses/VBufferRT/VBufferRTPass.cpp
+        Source/RenderPasses/VBufferRT/VBufferRTPass.h
+        Source/RenderPasses/GBufferRaster/GBufferRasterPass.cpp
+        Source/RenderPasses/GBufferRaster/GBufferRasterPass.h
+        Source/RenderPasses/GBufferRT/GBufferRTPass.cpp
+        Source/RenderPasses/GBufferRT/GBufferRTPass.h
 )
 
 target_include_directories(PathTracer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/Source)

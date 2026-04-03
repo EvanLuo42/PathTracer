@@ -123,6 +123,14 @@ public:
 
     void Bind(const ShaderVar& var) const;
 
+    // Draw all meshes. Sets vertex/index buffers, viewport, and issues indexed draw calls.
+    // `materialVar` is the ShaderVar path for the per-draw material index (e.g. vars["gDraw"]["materialIndex"]).
+    void Rasterize(rhi::IRenderPassEncoder* encoder, const ShaderVar& vars,
+                   rhi::ITexture* renderTarget) const;
+
+    [[nodiscard]] rhi::IBuffer* GetVertexBuffer() const { return vertexBuffer; }
+    [[nodiscard]] rhi::IBuffer* GetIndexBuffer() const { return indexBuffer; }
+    [[nodiscard]] const std::vector<MeshInfo>& GetMeshInfos() const { return meshInfos; }
     [[nodiscard]] rhi::IAccelerationStructure* GetTLAS() const { return tlas; }
     [[nodiscard]] uint32_t GetMeshCount() const { return static_cast<uint32_t>(meshInfos.size()); }
     [[nodiscard]] uint32_t GetTotalIndexCount() const { return totalIndexCount; }

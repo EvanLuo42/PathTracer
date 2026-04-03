@@ -24,6 +24,7 @@ private:
     void ReflectThreadGroupSize(slang::EntryPointReflection* entry);
 
     static rhi::Format GetVertexFormat(slang::TypeReflection::ScalarType scalarType, unsigned columnCount);
+    static uint32_t GetScalarSize(slang::TypeReflection::ScalarType scalarType);
 
     static void PrintDiagnostics(const Slang::ComPtr<slang::IBlob>& diagnostics);
 
@@ -32,6 +33,7 @@ private:
     Slang::ComPtr<rhi::IDevice> device;
 
     std::vector<rhi::InputElementDesc> inputElements;
+    std::vector<std::string> semanticNames; // owns the strings pointed to by inputElements
     rhi::VertexStreamDesc vertexStream = {};
     rhi::InputLayoutDesc inputLayoutDesc = {};
     uint32_t renderTargetCount = 0;

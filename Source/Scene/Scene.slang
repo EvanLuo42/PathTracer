@@ -94,7 +94,7 @@ struct Scene
     StructuredBuffer<MeshInfo> meshInfos;
     RaytracingAccelerationStructure tlas;
     SamplerState sampler;
-    Texture2D textures[128];
+    Texture2D textures[16];
 };
 
 ParameterBlock<Scene> gScene;

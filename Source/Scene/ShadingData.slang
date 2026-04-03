@@ -45,12 +45,10 @@ ShadingData prepareShadingData(uint instanceID, uint primitiveID, float2 barycen
     sd.texCoord = v.texCoord;
     sd.material = mat;
 
-    // Sample base color
     sd.baseColor = mat.baseColor;
     if (mat.baseColorTextureIndex >= 0)
         sd.baseColor *= gScene.textures[mat.baseColorTextureIndex].Sample(gScene.sampler, v.texCoord);
 
-    // Sample metallic-roughness
     sd.metallic = mat.metallic;
     sd.roughness = mat.roughness;
     if (mat.metallicRoughnessTextureIndex >= 0)
@@ -60,7 +58,6 @@ ShadingData prepareShadingData(uint instanceID, uint primitiveID, float2 barycen
         sd.metallic *= mr.b;
     }
 
-    // Emissive
     sd.emissive = mat.emissiveColor * mat.emissiveStrength;
     if (mat.emissiveTextureIndex >= 0)
         sd.emissive *= gScene.textures[mat.emissiveTextureIndex].Sample(gScene.sampler, v.texCoord).rgb;

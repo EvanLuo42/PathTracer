@@ -92,6 +92,30 @@ rhi::Format Program::GetVertexFormat(const slang::TypeReflection::ScalarType sca
     return rhi::Format::Undefined;
 }
 
+uint32_t Program::GetScalarSize(const slang::TypeReflection::ScalarType scalarType)
+{
+    switch (scalarType)
+    {
+    case slang::TypeReflection::ScalarType::Float32:
+    case slang::TypeReflection::ScalarType::UInt32:
+    case slang::TypeReflection::ScalarType::Int32:
+        return 4;
+    case slang::TypeReflection::ScalarType::Float16:
+    case slang::TypeReflection::ScalarType::UInt16:
+    case slang::TypeReflection::ScalarType::Int16:
+        return 2;
+    case slang::TypeReflection::ScalarType::UInt8:
+    case slang::TypeReflection::ScalarType::Int8:
+        return 1;
+    case slang::TypeReflection::ScalarType::Float64:
+    case slang::TypeReflection::ScalarType::UInt64:
+    case slang::TypeReflection::ScalarType::Int64:
+        return 8;
+    default:
+        return 4;
+    }
+}
+
 void Program::Reflect(slang::IModule* module, slang::IComponentType** entryPoints, const size_t entryPointCount)
 {
     // Compose module + entry points for reflection
@@ -147,6 +171,9 @@ void Program::Reflect(slang::IModule* module, slang::IComponentType** entryPoint
 
 void Program::ReflectVertexInputLayout(slang::EntryPointReflection* entry)
 {
+    inputElements.clear();
+    semanticNames.clear();
+
     uint32_t offset = 0;
     const unsigned paramCount = entry->getParameterCount();
     for (unsigned i = 0; i < paramCount; i++)
@@ -164,28 +191,46 @@ void Program::ReflectVertexInputLayout(slang::EntryPointReflection* entry)
                 auto* field = typeLayout->getFieldByIndex(f);
                 auto* fieldType = field->getTypeLayout();
 
+                const char* sem = field->getSemanticName();
+                semanticNames.emplace_back(sem ? sem : "");
+                auto scalarType = fieldType->getScalarType();
+                auto columnCount = fieldType->getColumnCount();
                 inputElements.push_back({
-                    field->getSemanticName(),
+                    nullptr,
                     static_cast<uint32_t>(field->getSemanticIndex()),
-                    GetVertexFormat(fieldType->getScalarType(), fieldType->getColumnCount()),
+                    GetVertexFormat(scalarType, columnCount),
                     offset, 0
                 });
-                offset += static_cast<uint32_t>(fieldType->getSize());
+                offset += GetScalarSize(scalarType) * columnCount;
             }
         }
         else
         {
+            auto scalarType = typeLayout->getScalarType();
+            auto columnCount = typeLayout->getColumnCount();
+            const char* sem = param->getSemanticName();
+            semanticNames.emplace_back(sem ? sem : "");
             inputElements.push_back({
-                param->getSemanticName(),
+                nullptr,
                 static_cast<uint32_t>(param->getSemanticIndex()),
-                GetVertexFormat(typeLayout->getScalarType(), typeLayout->getColumnCount()),
+                GetVertexFormat(scalarType, columnCount),
                 offset, 0
             });
-            offset += static_cast<uint32_t>(typeLayout->getSize());
+            offset += GetScalarSize(scalarType) * columnCount;
         }
     }
 
+    // Second pass: patch semantic name pointers
+    for (size_t i = 0; i < inputElements.size(); i++)
+    {
+        inputElements[i].semanticName = semanticNames[i].c_str();
+        spdlog::debug("Vertex input [{}]: semantic={}{}, format={}, offset={}",
+            i, semanticNames[i], inputElements[i].semanticIndex,
+            static_cast<int>(inputElements[i].format), inputElements[i].offset);
+    }
+
     vertexStream.stride = offset;
+    spdlog::debug("Vertex stride: {} (expected {})", offset, sizeof(float) * 8); // 3+3+2 floats
     vertexStream.slotClass = rhi::InputSlotClass::PerVertex;
     vertexStream.instanceDataStepRate = 0;
 
@@ -244,8 +289,42 @@ Program::Program(rhi::IDevice* device, const std::string& moduleName) : moduleNa
     for (size_t i = 0; i < entryCount; i++)
         module->getDefinedEntryPoint(static_cast<int32_t>(i), reinterpret_cast<slang::IEntryPoint**>(&entryPoints[i]));
 
+    // Gather all transitive module dependencies into the global scope
+    // so slang-rhi can resolve struct methods from imported modules during linking.
+    std::vector<slang::IComponentType*> modules;
+    modules.push_back(module);
+
+    const auto depCount = module->getDependencyFileCount();
+    for (SlangInt32 i = 0; i < depCount; i++)
+    {
+        const char* depPath = module->getDependencyFilePath(i);
+        if (!depPath)
+            continue;
+        // Try loading as a module — if it's already loaded, the session returns the cached one
+        auto* depModule = session->loadModule(depPath, diagnostics.writeRef());
+        if (depModule && depModule != module)
+            modules.push_back(depModule);
+    }
+
+    // Compose all modules (without entry points) into a single global scope
+    Slang::ComPtr<slang::IComponentType> globalScope;
+    if (modules.size() > 1)
+    {
+        if (SLANG_FAILED(session->createCompositeComponentType(
+                modules.data(), static_cast<SlangInt>(modules.size()),
+                globalScope.writeRef(), diagnostics.writeRef())))
+        {
+            PrintDiagnostics(diagnostics);
+            globalScope = module; // fallback to just the main module
+        }
+    }
+    else
+    {
+        globalScope = module;
+    }
+
     rhi::ShaderProgramDesc programDesc = {};
-    programDesc.slangGlobalScope = module;
+    programDesc.slangGlobalScope = globalScope;
     programDesc.slangEntryPoints = entryPoints.get();
     programDesc.slangEntryPointCount = static_cast<uint32_t>(entryCount);
     programDesc.label = moduleName.c_str();
@@ -255,6 +334,8 @@ Program::Program(rhi::IDevice* device, const std::string& moduleName) : moduleNa
     if (!shaderProgram)
     {
         spdlog::error("Failed to create shader program: {}", moduleName);
+        for (size_t i = 0; i < entryCount; i++)
+            entryPoints[i]->release();
         return;
     }
 

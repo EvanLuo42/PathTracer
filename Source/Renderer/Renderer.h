@@ -1,10 +1,11 @@
 #pragma once
 
-#include "Resources.h"
 #include "Camera.h"
 #include "Gui.h"
 #include "Scene/Scene.h"
-#include "RenderPasses/IRenderPass.h"
+#include "RenderGraph/RenderGraph.h"
+#include "RenderPasses/Forward/ForwardPass.h"
+#include "RenderPasses/GBufferRaster/GBufferRasterPass.h"
 
 #include <slang-rhi.h>
 
@@ -19,7 +20,6 @@
 
 #include <filesystem>
 #include <memory>
-#include <vector>
 
 class Renderer
 {
@@ -29,15 +29,15 @@ public:
 
     void LoadScene(const std::filesystem::path& path);
     void LoadEnvMap(const std::filesystem::path& path);
-    void AddRenderPass(std::unique_ptr<IRenderPass> pass);
 
     void OnRender();
     void OnRenderUI();
     void OnUpdate(double deltaTime);
-    void OnResize(uint32_t width, uint32_t height) const;
+    void OnResize(uint32_t width, uint32_t height);
     void OnScroll(const double yOffset) { camera.OnScroll(yOffset); }
 
 private:
+    void BuildGraph();
     bool BeginFrame();
     void EndFrame();
 
@@ -47,19 +47,29 @@ private:
     Slang::ComPtr<rhi::ICommandQueue> queue;
     Slang::ComPtr<rhi::ICommandEncoder> encoder;
 
-    std::unique_ptr<Resources> resources;
-    std::unique_ptr<Gui> gui;
+    // Frame resources
+    Slang::ComPtr<rhi::ITexture> backBuffer;
+
+    // Camera
     Camera camera;
+
+    // Environment map
+    Slang::ComPtr<rhi::ITexture> envMap;
+    Slang::ComPtr<rhi::ISampler> envSampler;
+
+    // Subsystems
+    std::unique_ptr<Gui> gui;
+    std::unique_ptr<RenderGraph> graph;
     std::shared_ptr<Scene> scene;
-    std::vector<std::unique_ptr<IRenderPass>> renderPasses;
+
     bool showUI = true;
     bool vsync = true;
 
     enum DirtyFlags : uint32_t
     {
-        DirtyNone   = 0,
-        DirtyScene  = 1 << 0,
-        DirtyVSync  = 1 << 1,
+        DirtyNone = 0,
+        DirtyScene = 1 << 0,
+        DirtyVSync = 1 << 1,
         DirtyEnvMap = 1 << 2,
     };
     uint32_t dirtyFlags = DirtyNone;

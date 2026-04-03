@@ -11,6 +11,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <functional>
 
 using namespace rhi;
@@ -98,14 +99,14 @@ std::shared_ptr<Scene> Scene::Create(IDevice* device, ICommandQueue* queue, cons
     scene->LoadLights(model);
     scene->LoadMeshes(model);
 
-    // Release host texture data
-    scene->textureDataList.clear();
-    scene->textureDataList.shrink_to_fit();
-
     if (!scene->BuildBuffers(device))
         return nullptr;
+    if (!scene->BuildTextures(device))
+        return nullptr;
 
-    // Release host geometry data
+    // Release host data after GPU resources are built
+    scene->textureDataList.clear();
+    scene->textureDataList.shrink_to_fit();
     scene->vertices.clear();
     scene->vertices.shrink_to_fit();
     scene->indices.clear();
@@ -114,17 +115,8 @@ std::shared_ptr<Scene> Scene::Create(IDevice* device, ICommandQueue* queue, cons
     scene->materials.shrink_to_fit();
     scene->lights.clear();
     scene->lights.shrink_to_fit();
-    scene->meshInfos.clear();
-    scene->meshInfos.shrink_to_fit();
-
-    if (!scene->BuildTextures(device))
-        return nullptr;
     if (!scene->BuildAccelerationStructure(device, queue))
         return nullptr;
-
-    // Release BLAS build data
-    scene->meshGeometries.clear();
-    scene->meshGeometries.shrink_to_fit();
 
     return scene;
 }
@@ -462,8 +454,6 @@ void Scene::LoadLights(const tinygltf::Model& model)
         traverseNode(rootNode, glm::mat4(1.0f));
 
     lightCount = static_cast<uint32_t>(lights.size());
-    if (!lights.empty())
-        spdlog::info("Loaded {} lights", lightCount);
 }
 
 void Scene::LoadMeshes(const tinygltf::Model& model)
@@ -495,7 +485,7 @@ void Scene::LoadMeshes(const tinygltf::Model& model)
     for (const int rootNode : scene.nodes)
         traverseNode(rootNode, glm::mat4(1.0f));
 
-    spdlog::info("{} vertices, {} triangles, {} meshes, {} materials",
+    spdlog::debug("{} vertices, {} triangles, {} meshes, {} materials",
         vertices.size(), indices.size() / 3, meshInfos.size(), materials.size());
 }
 
@@ -633,7 +623,7 @@ bool Scene::BuildTextures(IDevice* device)
     linearSampler = device->createSampler(samplerDesc);
     linearSampler->getDescriptorHandle(&linearSamplerHandle);
 
-    spdlog::info("Created {} textures", textures.size());
+    spdlog::debug("Created {} textures", textures.size());
     return true;
 }
 
@@ -769,7 +759,7 @@ bool Scene::BuildAccelerationStructure(IDevice* device, ICommandQueue* queue)
 
     tlas->getDescriptorHandle(&tlasHandle);
 
-    spdlog::info("Built {} BLAS + TLAS", blasList.size());
+    spdlog::debug("Built {} BLAS + TLAS", blasList.size());
     return true;
 }
 
@@ -788,4 +778,42 @@ void Scene::Bind(const ShaderVar& var) const
 
     for (size_t i = 0; i < textures.size(); i++)
         scene["textures"][static_cast<uint32_t>(i)] = textures[i];
+}
+
+void Scene::Rasterize(IRenderPassEncoder* encoder, const ShaderVar& vars, ITexture* renderTarget) const
+{
+    if (meshInfos.empty() || meshGeometries.empty())
+        return;
+
+    const auto texDesc = renderTarget->getDesc();
+    const auto w = static_cast<float>(texDesc.size.width);
+    const auto h = static_cast<float>(texDesc.size.height);
+
+    RenderState state = {};
+    state.viewports[0] = Viewport::fromSize(w, h);
+    state.viewportCount = 1;
+    state.scissorRects[0] = {0, 0, texDesc.size.width, texDesc.size.height};
+    state.scissorRectCount = 1;
+    state.vertexBuffers[0] = {vertexBuffer, 0};
+    state.vertexBufferCount = 1;
+    state.indexBuffer = {indexBuffer, 0};
+    state.indexFormat = IndexFormat::Uint32;
+
+    const size_t drawCount = std::min(meshInfos.size(), meshGeometries.size());
+    for (size_t meshIndex = 0; meshIndex < drawCount; meshIndex++)
+    {
+        const auto& mesh = meshInfos[meshIndex];
+        const auto& geom = meshGeometries[meshIndex];
+
+        vars["gDraw"]["modelMatrix"] = glm::transpose(geom.transform);
+        vars["gDraw"]["materialIndex"] = mesh.materialIndex;
+
+        encoder->setRenderState(state);
+
+        DrawArguments args = {};
+        args.vertexCount = mesh.indexCount;
+        args.startIndexLocation = mesh.indexOffset;
+        args.startVertexLocation = mesh.vertexOffset;
+        encoder->drawIndexed(args);
+    }
 }

@@ -41,10 +41,11 @@ Renderer::Renderer(GLFWwindow* window, rhi::IDevice* device, rhi::ISurface* surf
         return;
     }
 
-    int width, height;
-    glfwGetFramebufferSize(window, &width, &height);
-    resources = std::make_unique<Resources>(device, static_cast<uint32_t>(width), static_cast<uint32_t>(height));
     gui = std::make_unique<Gui>(device, surface, window);
+    graph = std::make_unique<RenderGraph>(device);
+
+    // Import backBuffer placeholder — will be updated each frame
+    graph->importTexture("backBuffer", nullptr);
 }
 
 Renderer::~Renderer()
@@ -56,13 +57,39 @@ Renderer::~Renderer()
 void Renderer::LoadScene(const std::filesystem::path& path)
 {
     queue->waitOnHost();
-    renderPasses.clear();
 
     scene = Scene::Create(device, queue, path);
     if (!scene)
     {
         spdlog::error("Failed to load scene: {}", path.string());
+        return;
     }
+
+    BuildGraph();
+}
+
+void Renderer::BuildGraph()
+{
+    graph = std::make_unique<RenderGraph>(device);
+
+    auto backBufferSlot = graph->importTexture("backBuffer", nullptr);
+    auto colorFormat = surface->getConfig()->format;
+
+    // GBuffer pass
+    auto* gbuffer = graph->addPass<GBufferRasterPass>("GBufferRaster", device.get(), scene, &camera);
+
+    // Forward pass — draws baseColor to backBuffer for now
+    auto* forward = graph->addPass<ForwardPass>("Forward", device.get(), colorFormat, scene, &camera);
+
+    graph->addEdge(backBufferSlot, forward->colorIn);
+    graph->markOutput(forward->colorIn);
+
+    // Mark a gbuffer output so it doesn't get culled
+    graph->markOutput(gbuffer->baseColor);
+
+    int w, h;
+    glfwGetFramebufferSize(window, &w, &h);
+    graph->compile(static_cast<uint32_t>(w), static_cast<uint32_t>(h));
 }
 
 void Renderer::LoadEnvMap(const std::filesystem::path& path)
@@ -88,31 +115,26 @@ void Renderer::LoadEnvMap(const std::filesystem::path& path)
     initData.data = pixels;
     initData.rowPitch = width * 4 * sizeof(float);
 
-    resources->envMap = device->createTexture(desc, &initData);
+    envMap = device->createTexture(desc, &initData);
     stbi_image_free(pixels);
 
-    if (!resources->envMap)
+    if (!envMap)
     {
         spdlog::error("Failed to create environment map texture");
         return;
     }
 
-    if (!resources->envSampler)
+    if (!envSampler)
     {
         rhi::SamplerDesc samplerDesc = {};
         samplerDesc.minFilter = rhi::TextureFilteringMode::Linear;
         samplerDesc.magFilter = rhi::TextureFilteringMode::Linear;
         samplerDesc.addressU = rhi::TextureAddressingMode::Wrap;
         samplerDesc.addressV = rhi::TextureAddressingMode::ClampToEdge;
-        resources->envSampler = device->createSampler(samplerDesc);
+        envSampler = device->createSampler(samplerDesc);
     }
 
     spdlog::info("Loaded environment map: {} ({}x{})", path.filename().string(), width, height);
-}
-
-void Renderer::AddRenderPass(std::unique_ptr<IRenderPass> pass)
-{
-    renderPasses.push_back(std::move(pass));
 }
 
 void Renderer::OnRenderUI()
@@ -132,7 +154,7 @@ void Renderer::OnRenderUI()
             }
             if (ImGui::MenuItem("Load Environment Map..."))
             {
-                if (const auto path = OpenFileDialog(window, "HDR Images\0*.hdr;*.exr\0All Files\0*.*\0"); !path.empty())
+                if (const auto path = OpenFileDialog(window, "HDR Images\0*.hdr\0All Files\0*.*\0"); !path.empty())
                 {
                     pendingEnvMapPath = path;
                     dirtyFlags |= DirtyEnvMap;
@@ -179,7 +201,7 @@ void Renderer::OnRenderUI()
     // Environment
     if (ImGui::CollapsingHeader("Environment", ImGuiTreeNodeFlags_DefaultOpen))
     {
-        if (resources->envMap)
+        if (envMap)
             ImGui::Text("Environment map loaded");
         else
             ImGui::TextDisabled("No environment map");
@@ -194,15 +216,7 @@ void Renderer::OnRenderUI()
     ImGui::Separator();
 
     // Render passes
-    for (const auto& pass : renderPasses)
-    {
-        if (ImGui::CollapsingHeader(pass->GetName()))
-        {
-            ImGui::PushID(pass->GetName());
-            pass->OnRenderUI();
-            ImGui::PopID();
-        }
-    }
+    graph->onRenderUI();
 
     ImGui::End();
 
@@ -225,16 +239,16 @@ void Renderer::OnUpdate(const double deltaTime)
     glfwGetFramebufferSize(window, &width, &height);
     const float aspect = static_cast<float>(width) / static_cast<float>(height);
 
-    resources->cameraData = camera.GetCameraData(aspect);
+    camera.Update(aspect);
 }
 
-void Renderer::OnResize(const uint32_t width, const uint32_t height) const
+void Renderer::OnResize(const uint32_t width, const uint32_t height)
 {
     if (width == 0 || height == 0)
         return;
 
     queue->waitOnHost();
-    resources->Resize(width, height);
+    graph->resize(width, height);
 
     rhi::SurfaceConfig config = *surface->getConfig();
     config.width = width;
@@ -247,8 +261,8 @@ bool Renderer::BeginFrame()
     if (!surface->getConfig())
         return false;
 
-    resources->backBuffer = surface->acquireNextImage();
-    if (!resources->backBuffer)
+    backBuffer = surface->acquireNextImage();
+    if (!backBuffer)
         return false;
 
     encoder = queue->createCommandEncoder();
@@ -262,7 +276,7 @@ void Renderer::EndFrame()
 {
     queue->submit(encoder->finish());
     encoder = nullptr;
-    resources->backBuffer = nullptr;
+    backBuffer = nullptr;
     surface->present();
 }
 
@@ -293,12 +307,16 @@ void Renderer::OnRender()
     if (!BeginFrame())
         return;
 
-    for (const auto& pass : renderPasses)
-        pass->Execute(encoder, *resources);
+    // Update graph's back buffer import each frame
+    graph->importTexture("backBuffer", backBuffer, rhi::ResourceState::Undefined);
 
+    // Execute render graph
+    graph->execute(encoder);
+
+    // GUI (outside of graph)
     gui->BeginFrame();
     OnRenderUI();
-    gui->Render(encoder, resources->backBuffer);
+    gui->Render(encoder, backBuffer);
 
     EndFrame();
 }

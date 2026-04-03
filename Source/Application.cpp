@@ -5,7 +5,7 @@ Application::Application()
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-    const std::vector deviceTypes = {rhi::DeviceType::Vulkan, rhi::DeviceType::D3D12};
+    const std::vector deviceTypes = {rhi::DeviceType::Vulkan, rhi::DeviceType::Vulkan};
 
     const std::vector requiredFeatures = {
         rhi::Feature::Surface,

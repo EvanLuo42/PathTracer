@@ -1,3 +1,11 @@
+struct Ray
+{
+    float3 Origin;
+    float3 Direction;
+    float TMin;
+    float TMax;
+};
+
 struct Camera
 {
     float4x4 viewMatrix;
@@ -24,7 +32,7 @@ struct Camera
     float _pad;
 
     // Generate a ray from normalized pixel coordinates [0,1]
-    RayDesc generateRay(float2 pixel)
+    Ray generateRay(float2 pixel)
     {
         // Map pixel to [-1, 1] clip space, apply jitter
         float2 ndc = float2(2.0 * pixel.x - 1.0, 1.0 - 2.0 * pixel.y) + jitter;
@@ -35,7 +43,7 @@ struct Camera
         nearPoint.xyz /= nearPoint.w;
         farPoint.xyz /= farPoint.w;
 
-        RayDesc ray;
+        Ray ray;
         ray.Origin = nearPoint.xyz;
         ray.Direction = normalize(farPoint.xyz - nearPoint.xyz);
         ray.TMin = 0.0;
@@ -58,5 +66,3 @@ struct Camera
         return -viewPos.z;
     }
 };
-
-ConstantBuffer<Camera> gCamera;
