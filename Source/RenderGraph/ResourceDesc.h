@@ -22,12 +22,12 @@ struct SizePolicy
         return {Mode::Fixed, 0, 0, w, h};
     }
 
-    [[nodiscard]] uint32_t resolveWidth(uint32_t bbWidth) const
+    [[nodiscard]] uint32_t ResolveWidth(uint32_t bbWidth) const
     {
         return mode == Mode::Fixed ? fixedWidth : static_cast<uint32_t>(static_cast<float>(bbWidth) * widthScale);
     }
 
-    [[nodiscard]] uint32_t resolveHeight(uint32_t bbHeight) const
+    [[nodiscard]] uint32_t ResolveHeight(uint32_t bbHeight) const
     {
         return mode == Mode::Fixed ? fixedHeight : static_cast<uint32_t>(static_cast<float>(bbHeight) * heightScale);
     }

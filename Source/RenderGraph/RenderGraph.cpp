@@ -9,7 +9,7 @@
 
 using namespace rhi;
 
-RenderGraphSlot RenderPass::addInput(const std::string& name, PassSlot::Access access)
+RenderGraphSlot RenderPass::AddInput(const std::string& name, PassSlot::Access access)
 {
     PassSlot slot;
     slot.direction = PassSlot::Direction::Input;
@@ -18,7 +18,7 @@ RenderGraphSlot RenderPass::addInput(const std::string& name, PassSlot::Access a
     return {graphPassIndex, name};
 }
 
-RenderGraphSlot RenderPass::addOutput(const std::string& name, Format format, PassSlot::Access access,
+RenderGraphSlot RenderPass::AddOutput(const std::string& name, Format format, PassSlot::Access access,
                                        SizePolicy sizePolicy, LoadOp loadOp, uint32_t rtSlot)
 {
     PassSlot slot;
@@ -31,7 +31,7 @@ RenderGraphSlot RenderPass::addOutput(const std::string& name, Format format, Pa
     return {graphPassIndex, name};
 }
 
-void RenderPass::setRenderTarget(uint32_t slot, ITexture* texture, LoadOp loadOp, const float clearColor[4])
+void RenderPass::SetRenderTarget(uint32_t slot, ITexture* texture, LoadOp loadOp, const float clearColor[4])
 {
     RenderPassColorAttachment attachment = {};
     attachment.view = texture->getDefaultView();
@@ -50,7 +50,7 @@ void RenderPass::setRenderTarget(uint32_t slot, ITexture* texture, LoadOp loadOp
     colorAttachments[slot] = attachment;
 }
 
-void RenderPass::setDepthStencil(ITexture* texture, LoadOp loadOp, float depthClear)
+void RenderPass::SetDepthStencil(ITexture* texture, LoadOp loadOp, float depthClear)
 {
     depthStencilAttachment = {};
     depthStencilAttachment.view = texture->getDefaultView();
@@ -60,7 +60,7 @@ void RenderPass::setDepthStencil(ITexture* texture, LoadOp loadOp, float depthCl
     hasDepthStencil = true;
 }
 
-IRenderPassEncoder* RenderPass::beginRenderPass(ICommandEncoder* encoder)
+IRenderPassEncoder* RenderPass::BeginRenderPass(ICommandEncoder* encoder)
 {
     RenderPassDesc desc = {};
     desc.colorAttachments = colorAttachments.data();
@@ -70,14 +70,13 @@ IRenderPassEncoder* RenderPass::beginRenderPass(ICommandEncoder* encoder)
 
     auto* passEncoder = encoder->beginRenderPass(desc);
 
-    // Reset for next frame
     colorAttachments.clear();
     hasDepthStencil = false;
 
     return passEncoder;
 }
 
-ITexture* RenderGraphResources::getTexture(const std::string& slot) const
+ITexture* RenderGraphResources::GetTexture(const std::string& slot) const
 {
     auto it = textures.find(slot);
     if (it == textures.end())
@@ -87,7 +86,7 @@ ITexture* RenderGraphResources::getTexture(const std::string& slot) const
 
 RenderGraph::RenderGraph(IDevice* device) : device(device) {}
 
-void RenderGraph::addPassInternal(const std::string& name, std::unique_ptr<RenderPass> pass)
+void RenderGraph::AddPassInternal(const std::string& name, std::unique_ptr<RenderPass> pass)
 {
     const auto index = static_cast<uint32_t>(passes.size());
     pass->graphPassIndex = index;
@@ -96,19 +95,19 @@ void RenderGraph::addPassInternal(const std::string& name, std::unique_ptr<Rende
     passes.push_back({name, std::move(pass)});
 }
 
-uint32_t RenderGraph::getPassIndex(const std::string& name) const
+uint32_t RenderGraph::GetPassIndex(const std::string& name) const
 {
     auto it = passIndexByName.find(name);
     assert(it != passIndexByName.end());
     return it->second;
 }
 
-void RenderGraph::addEdge(const RenderGraphSlot& src, const RenderGraphSlot& dst)
+void RenderGraph::AddEdge(const RenderGraphSlot& src, const RenderGraphSlot& dst)
 {
     edges.push_back({src.passIndex, dst.passIndex, src.name, dst.name});
 }
 
-RenderGraphSlot RenderGraph::importTexture(const std::string& name, ITexture* texture, ResourceState currentState)
+RenderGraphSlot RenderGraph::ImportTexture(const std::string& name, ITexture* texture, ResourceState currentState)
 {
     auto it = passIndexByName.find(name);
     if (it != passIndexByName.end())
@@ -128,7 +127,7 @@ RenderGraphSlot RenderGraph::importTexture(const std::string& name, ITexture* te
     {
     public:
         explicit ImportPass(const char* n) : passName(n) {}
-        void Setup() override { addOutput("out", Format::Undefined, PassSlot::Access::ShaderResource); }
+        void Setup() override { AddOutput("out", Format::Undefined, PassSlot::Access::ShaderResource); }
         void Execute(ICommandEncoder*, const RenderGraphResources&) override {}
         const char* GetName() const override { return passName; }
     private:
@@ -144,7 +143,6 @@ RenderGraphSlot RenderGraph::importTexture(const std::string& name, ITexture* te
     passIndexByName[name] = index;
     entry.pass->Setup();
 
-    // Create physical resource
     PhysicalResource phys;
     phys.id = static_cast<uint32_t>(physicalResources.size());
     phys.external = true;
@@ -160,13 +158,13 @@ RenderGraphSlot RenderGraph::importTexture(const std::string& name, ITexture* te
     return {index, "out"};
 }
 
-void RenderGraph::markOutput(const RenderGraphSlot& slot)
+void RenderGraph::MarkOutput(const RenderGraphSlot& slot)
 {
     outputPass = slot.passIndex;
     outputSlot = slot.name;
 }
 
-TextureUsage RenderGraph::accessToUsage(PassSlot::Access access)
+TextureUsage RenderGraph::AccessToUsage(PassSlot::Access access)
 {
     switch (access)
     {
@@ -178,7 +176,7 @@ TextureUsage RenderGraph::accessToUsage(PassSlot::Access access)
     return TextureUsage::None;
 }
 
-ResourceState RenderGraph::accessToState(PassSlot::Access access)
+ResourceState RenderGraph::AccessToState(PassSlot::Access access)
 {
     switch (access)
     {
@@ -190,9 +188,8 @@ ResourceState RenderGraph::accessToState(PassSlot::Access access)
     return ResourceState::Undefined;
 }
 
-void RenderGraph::assignPhysicalResources()
+void RenderGraph::AssignPhysicalResources()
 {
-    // Create physical resources for output slots that don't have one yet
     for (uint32_t i = 0; i < passes.size(); i++)
     {
         for (const auto& [slotName, slot] : passes[i].pass->GetSlots())
@@ -211,7 +208,6 @@ void RenderGraph::assignPhysicalResources()
         }
     }
 
-    // Edges: map input slots to same physical resource as connected output
     for (const auto& edge : edges)
     {
         auto srcKey = std::to_string(edge.srcPass) + ":" + edge.srcSlot;
@@ -221,7 +217,6 @@ void RenderGraph::assignPhysicalResources()
         slotToPhysical[dstKey] = srcIt->second;
     }
 
-    // Accumulate usage flags
     for (uint32_t i = 0; i < passes.size(); i++)
     {
         for (const auto& [slotName, slot] : passes[i].pass->GetSlots())
@@ -232,7 +227,7 @@ void RenderGraph::assignPhysicalResources()
                 continue;
 
             auto& phys = physicalResources[it->second];
-            phys.accumulatedUsage |= accessToUsage(slot.access);
+            phys.accumulatedUsage |= AccessToUsage(slot.access);
 
             if (!phys.external && slot.direction == PassSlot::Direction::Output &&
                 slot.desc.format != Format::Undefined)
@@ -241,15 +236,15 @@ void RenderGraph::assignPhysicalResources()
     }
 }
 
-void RenderGraph::createGpuResources()
+void RenderGraph::CreateGpuResources()
 {
     for (auto& phys : physicalResources)
     {
         if (phys.external || phys.desc.format == Format::Undefined)
             continue;
 
-        uint32_t w = phys.desc.sizePolicy.resolveWidth(bbWidth);
-        uint32_t h = phys.desc.sizePolicy.resolveHeight(bbHeight);
+        uint32_t w = phys.desc.sizePolicy.ResolveWidth(bbWidth);
+        uint32_t h = phys.desc.sizePolicy.ResolveHeight(bbHeight);
 
         if (phys.texture)
         {
@@ -273,7 +268,7 @@ void RenderGraph::createGpuResources()
     }
 }
 
-void RenderGraph::topologicalSort()
+void RenderGraph::TopologicalSort()
 {
     const auto passCount = static_cast<uint32_t>(passes.size());
 
@@ -292,7 +287,6 @@ void RenderGraph::topologicalSort()
         inDegree[edge.dstPass]++;
     }
 
-    // Dead pass culling: backward BFS from output + side-effect passes
     std::vector<bool> alive(passCount, false);
     {
         std::queue<uint32_t> q;
@@ -329,7 +323,6 @@ void RenderGraph::topologicalSort()
         }
     }
 
-    // Kahn's algorithm, insertion-order tiebreak via std::set
     std::set<uint32_t> ready;
     for (uint32_t i = 0; i < passCount; i++)
     {
@@ -343,7 +336,6 @@ void RenderGraph::topologicalSort()
         uint32_t cur = *ready.begin();
         ready.erase(ready.begin());
 
-        // Skip external import passes
         auto slotKey = std::to_string(cur) + ":out";
         auto physIt = slotToPhysical.find(slotKey);
         bool isExternal = false;
@@ -352,7 +344,7 @@ void RenderGraph::topologicalSort()
             if (physIt->second < physicalResources.size())
                 isExternal = physicalResources[physIt->second].external;
             else
-                spdlog::error("topologicalSort: slot '{}' maps to physId {} but only {} resources exist",
+                spdlog::error("TopologicalSort: slot '{}' maps to physId {} but only {} resources exist",
                     slotKey, physIt->second, physicalResources.size());
         }
 
@@ -367,7 +359,7 @@ void RenderGraph::topologicalSort()
     }
 }
 
-void RenderGraph::planBarriers()
+void RenderGraph::PlanBarriers()
 {
     std::unordered_map<uint32_t, ResourceState> currentState;
     for (const auto& phys : physicalResources)
@@ -384,7 +376,7 @@ void RenderGraph::planBarriers()
                 continue;
 
             uint32_t physId = physIt->second;
-            ResourceState needed = accessToState(slot.access);
+            ResourceState needed = AccessToState(slot.access);
 
             if (currentState[physId] != needed)
             {
@@ -395,16 +387,13 @@ void RenderGraph::planBarriers()
     }
 }
 
-void RenderGraph::compile(uint32_t backBufferWidth, uint32_t backBufferHeight)
+void RenderGraph::Compile(uint32_t backBufferWidth, uint32_t backBufferHeight)
 {
     bbWidth = backBufferWidth;
     bbHeight = backBufferHeight;
 
-    // Clear compiled state (keep passes, edges, imports)
     executionOrder.clear();
 
-    // Clear non-external physical resources and slot mappings for non-externals
-    // so assignPhysicalResources can rebuild them cleanly
     {
         std::vector<PhysicalResource> kept;
         std::unordered_map<std::string, uint32_t> keptSlots;
@@ -432,18 +421,16 @@ void RenderGraph::compile(uint32_t backBufferWidth, uint32_t backBufferHeight)
         slotToPhysical = std::move(keptSlots);
     }
 
-    assignPhysicalResources();
-    createGpuResources();
-    topologicalSort();
-    planBarriers();
+    AssignPhysicalResources();
+    CreateGpuResources();
+    TopologicalSort();
+    PlanBarriers();
 
     spdlog::debug("RenderGraph compiled: {} passes, {} resources",
         executionOrder.size(), physicalResources.size());
 }
 
-// ---- Execute ----
-
-void RenderGraph::execute(ICommandEncoder* encoder)
+void RenderGraph::Execute(ICommandEncoder* encoder)
 {
     for (const auto& cp : executionOrder)
     {
@@ -470,15 +457,15 @@ void RenderGraph::execute(ICommandEncoder* encoder)
     }
 }
 
-void RenderGraph::resize(uint32_t width, uint32_t height)
+void RenderGraph::Resize(uint32_t width, uint32_t height)
 {
     bbWidth = width;
     bbHeight = height;
-    createGpuResources();
-    planBarriers();
+    CreateGpuResources();
+    PlanBarriers();
 }
 
-ITexture* RenderGraph::getTexture(const RenderGraphSlot& slot) const
+ITexture* RenderGraph::GetTexture(const RenderGraphSlot& slot) const
 {
     auto key = std::to_string(slot.passIndex) + ":" + slot.name;
     auto it = slotToPhysical.find(key);
@@ -487,7 +474,7 @@ ITexture* RenderGraph::getTexture(const RenderGraphSlot& slot) const
     return physicalResources[it->second].texture;
 }
 
-void RenderGraph::onRenderUI()
+void RenderGraph::OnRenderUI()
 {
     for (const auto& cp : executionOrder)
     {

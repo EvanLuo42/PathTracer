@@ -76,7 +76,7 @@ GBufferOutput fragmentMain(VSOutput input)
 
     GBufferOutput output;
     output.baseColor = baseColor;
-    output.normal = encodeNormalOctahedral(N);
+    output.normal = EncodeNormalOctahedral(N);
     output.materialData = float4(metallic, roughness, emissiveScale, 0);
     return output;
 }

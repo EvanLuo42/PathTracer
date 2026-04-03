@@ -23,7 +23,7 @@ void rayGen()
     uint2 dims = DispatchRaysDimensions().xy;
 
     float2 uv = (float2(pixel) + 0.5) / float2(dims);
-    Ray ray = gCamera.generateRay(uv);
+    Ray ray = gCamera.GenerateRay(uv);
 
     RayDesc rayDesc;
     rayDesc.Origin = ray.Origin;
@@ -47,7 +47,7 @@ void rayGen()
         return;
     }
 
-    ShadingData sd = prepareShadingData(payload.instanceID, payload.primitiveID, payload.barycentrics);
+    ShadingData sd = PrepareShadingData(payload.instanceID, payload.primitiveID, payload.barycentrics);
 
     // Compute depth: project hit position to clip space
     float4 clipPos = mul(gCamera.viewProjMatrix, float4(sd.position, 1.0));
@@ -57,7 +57,7 @@ void rayGen()
     float emissiveScale = saturate(length(emissive) / 10.0);
 
     gBaseColor[pixel] = sd.baseColor;
-    gNormal[pixel] = encodeNormalOctahedral(sd.normal);
+    gNormal[pixel] = EncodeNormalOctahedral(sd.normal);
     gMaterialData[pixel] = float4(sd.metallic, sd.roughness, emissiveScale, 0);
     gDepth[pixel] = depth;
 }

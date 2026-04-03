@@ -20,9 +20,9 @@ void GBufferRasterPass::CreatePipeline()
     device->createInputLayout(layoutDesc, inputLayout.writeRef());
 
     ColorTargetDesc colorTargets[] = {
-        {Format::RGBA8Unorm},   // baseColor
-        {Format::RG16Float},    // normal (octahedral)
-        {Format::RGBA8Unorm},   // materialData
+        {Format::RGBA8Unorm},
+        {Format::RG16Float},
+        {Format::RGBA8Unorm},
     };
 
     DepthStencilDesc depthStencil = {};
@@ -52,15 +52,15 @@ void GBufferRasterPass::CreatePipeline()
 
 void GBufferRasterPass::Setup()
 {
-    baseColor = addOutput("baseColor", Format::RGBA8Unorm, PassSlot::Access::RenderTarget,
+    baseColor = AddOutput("baseColor", Format::RGBA8Unorm, PassSlot::Access::RenderTarget,
                           SizePolicy::BackBuffer(), LoadOp::Clear, 0);
-    normal = addOutput("normal", Format::RG16Float, PassSlot::Access::RenderTarget,
+    normal = AddOutput("normal", Format::RG16Float, PassSlot::Access::RenderTarget,
                        SizePolicy::BackBuffer(), LoadOp::Clear, 1);
-    materialData = addOutput("materialData", Format::RGBA8Unorm, PassSlot::Access::RenderTarget,
+    materialData = AddOutput("materialData", Format::RGBA8Unorm, PassSlot::Access::RenderTarget,
                              SizePolicy::BackBuffer(), LoadOp::Clear, 2);
-    depth = addOutput("depth", Format::D32Float, PassSlot::Access::DepthStencil,
+    depth = AddOutput("depth", Format::D32Float, PassSlot::Access::DepthStencil,
                       SizePolicy::BackBuffer(), LoadOp::Clear, 0);
-    markSideEffect();
+    MarkSideEffect();
 }
 
 void GBufferRasterPass::Execute(ICommandEncoder* encoder, const RenderGraphResources& resources)
@@ -68,18 +68,18 @@ void GBufferRasterPass::Execute(ICommandEncoder* encoder, const RenderGraphResou
     if (!pipeline || !scene || scene->GetMeshCount() == 0)
         return;
 
-    auto* baseTex = resources.getTexture("baseColor");
-    auto* normTex = resources.getTexture("normal");
-    auto* matTex = resources.getTexture("materialData");
-    auto* depthTex = resources.getTexture("depth");
+    auto* baseTex = resources.GetTexture("baseColor");
+    auto* normTex = resources.GetTexture("normal");
+    auto* matTex = resources.GetTexture("materialData");
+    auto* depthTex = resources.GetTexture("depth");
     if (!baseTex || !normTex || !matTex || !depthTex)
         return;
 
-    setRenderTarget(0, baseTex);
-    setRenderTarget(1, normTex);
-    setRenderTarget(2, matTex);
-    setDepthStencil(depthTex);
-    auto* pass = beginRenderPass(encoder);
+    SetRenderTarget(0, baseTex);
+    SetRenderTarget(1, normTex);
+    SetRenderTarget(2, matTex);
+    SetDepthStencil(depthTex);
+    auto* pass = BeginRenderPass(encoder);
 
     auto* shaderObj = pass->bindPipeline(pipeline);
     if (!shaderObj)

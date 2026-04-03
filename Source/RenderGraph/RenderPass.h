@@ -10,7 +10,6 @@
 
 class RenderGraph;
 
-// A handle to a named slot on a pass, used for addEdge
 struct RenderGraphSlot
 {
     uint32_t passIndex = UINT32_MAX;
@@ -32,11 +31,10 @@ struct PassSlot
     float depthClear = 1.0f;
 };
 
-// Provides resolved GPU resources during Execute()
 class RenderGraphResources
 {
 public:
-    [[nodiscard]] rhi::ITexture* getTexture(const std::string& slot) const;
+    [[nodiscard]] rhi::ITexture* GetTexture(const std::string& slot) const;
 
 private:
     friend class RenderGraph;
@@ -57,29 +55,27 @@ public:
     [[nodiscard]] bool HasSideEffect() const { return hasSideEffect; }
 
 protected:
-    // --- Slot declaration (call in Setup) ---
-    RenderGraphSlot addInput(const std::string& name,
+    RenderGraphSlot AddInput(const std::string& name,
                               PassSlot::Access access = PassSlot::Access::ShaderResource);
 
-    RenderGraphSlot addOutput(const std::string& name,
+    RenderGraphSlot AddOutput(const std::string& name,
                                rhi::Format format,
                                PassSlot::Access access = PassSlot::Access::UnorderedAccess,
                                SizePolicy sizePolicy = SizePolicy::BackBuffer(),
                                rhi::LoadOp loadOp = rhi::LoadOp::Load,
                                uint32_t rtSlot = 0);
 
-    void markSideEffect() { hasSideEffect = true; }
+    void MarkSideEffect() { hasSideEffect = true; }
 
-    // --- Render pass helpers (call in Execute) ---
-    void setRenderTarget(uint32_t slot, rhi::ITexture* texture,
+    void SetRenderTarget(uint32_t slot, rhi::ITexture* texture,
                          rhi::LoadOp loadOp = rhi::LoadOp::Clear,
                          const float clearColor[4] = nullptr);
 
-    void setDepthStencil(rhi::ITexture* texture,
+    void SetDepthStencil(rhi::ITexture* texture,
                          rhi::LoadOp loadOp = rhi::LoadOp::Clear,
                          float depthClear = 1.0f);
 
-    rhi::IRenderPassEncoder* beginRenderPass(rhi::ICommandEncoder* encoder);
+    rhi::IRenderPassEncoder* BeginRenderPass(rhi::ICommandEncoder* encoder);
 
 private:
     friend class RenderGraph;
@@ -87,7 +83,6 @@ private:
     std::unordered_map<std::string, PassSlot> slots;
     bool hasSideEffect = false;
 
-    // Accumulated render pass state
     std::vector<rhi::RenderPassColorAttachment> colorAttachments;
     rhi::RenderPassDepthStencilAttachment depthStencilAttachment = {};
     bool hasDepthStencil = false;

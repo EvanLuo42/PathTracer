@@ -20,7 +20,7 @@ struct Light
     float outerConeAngle;
     float _pad[2];
 
-    float getDistanceAttenuation(float distance)
+    float GetDistanceAttenuation(float distance)
     {
         if (type == LightType.Directional)
             return 1.0;
@@ -34,7 +34,7 @@ struct Light
         return att;
     }
 
-    float getSpotAngleAttenuation(float3 toSurface)
+    float GetSpotAngleAttenuation(float3 toSurface)
     {
         if (type != LightType.Spot)
             return 1.0;
@@ -44,7 +44,7 @@ struct Light
         return saturate((cosAngle - cosOuter) / max(cosInner - cosOuter, 1e-5));
     }
 
-    void evaluate(float3 surfacePos, out float3 radiance, out float3 lightDir, out float dist)
+    void Evaluate(float3 surfacePos, out float3 radiance, out float3 lightDir, out float dist)
     {
         if (type == LightType.Directional)
         {
@@ -58,8 +58,8 @@ struct Light
             dist = length(toLight);
             lightDir = toLight / dist;
 
-            float att = getDistanceAttenuation(dist);
-            float spotAtt = getSpotAngleAttenuation(-lightDir);
+            float att = GetDistanceAttenuation(dist);
+            float spotAtt = GetSpotAngleAttenuation(-lightDir);
             radiance = color * intensity * att * spotAtt;
         }
     }

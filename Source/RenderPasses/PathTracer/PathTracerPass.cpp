@@ -67,10 +67,10 @@ void PathTracerPass::CreatePipeline()
 
 void PathTracerPass::Setup()
 {
-    vbufferIn = addInput("vbuffer", PassSlot::Access::ShaderResource);
-    output = addOutput("output", colorFormat, PassSlot::Access::UnorderedAccess,
+    vbufferIn = AddInput("vbuffer", PassSlot::Access::ShaderResource);
+    output = AddOutput("output", colorFormat, PassSlot::Access::UnorderedAccess,
                        SizePolicy::BackBuffer(), LoadOp::Load, 0);
-    markSideEffect();
+    MarkSideEffect();
 }
 
 void PathTracerPass::Execute(ICommandEncoder* encoder, const RenderGraphResources& resources)
@@ -78,12 +78,11 @@ void PathTracerPass::Execute(ICommandEncoder* encoder, const RenderGraphResource
     if (!rtPipeline || !shaderTable || !scene)
         return;
 
-    auto* vbufTex = resources.getTexture("vbuffer");
-    auto* outTex = resources.getTexture("output");
+    auto* vbufTex = resources.GetTexture("vbuffer");
+    auto* outTex = resources.GetTexture("output");
     if (!vbufTex || !outTex)
         return;
 
-    // Create/recreate accumulation texture if needed
     auto outDesc = outTex->getDesc();
     bool needNewAccum = !accumTexture;
     if (accumTexture)
@@ -104,7 +103,6 @@ void PathTracerPass::Execute(ICommandEncoder* encoder, const RenderGraphResource
         frameCount = 0;
     }
 
-    // Detect camera movement → reset accumulation
     if (camera)
     {
         const auto& camData = camera->GetData();

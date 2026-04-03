@@ -18,7 +18,7 @@ void rayGen()
     uint2 dims = DispatchRaysDimensions().xy;
 
     float2 uv = (float2(pixel) + 0.5) / float2(dims);
-    Ray ray = gCamera.generateRay(uv);
+    Ray ray = gCamera.GenerateRay(uv);
 
     RayDesc rayDesc;
     rayDesc.Origin = ray.Origin;

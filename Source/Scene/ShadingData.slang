@@ -4,7 +4,7 @@ struct ShadingData
 {
     float3 position;
     float3 normal;
-    float3 geometryNormal; // unperturbed normal (for bias/backface)
+    float3 geometryNormal;
     float2 texCoord;
     Material material;
 
@@ -15,7 +15,7 @@ struct ShadingData
     float occlusion;
 };
 
-float3 transformPoint(InstanceTransform transform, float3 position)
+float3 TransformPoint(InstanceTransform transform, float3 position)
 {
     float4 p = float4(position, 1.0);
     return float3(
@@ -25,7 +25,7 @@ float3 transformPoint(InstanceTransform transform, float3 position)
     );
 }
 
-float3 transformDirection(InstanceTransform transform, float3 direction)
+float3 TransformDirection(InstanceTransform transform, float3 direction)
 {
     return float3(
         dot(transform.modelRow0.xyz, direction),
@@ -34,7 +34,7 @@ float3 transformDirection(InstanceTransform transform, float3 direction)
     );
 }
 
-float3 transformNormal(InstanceTransform transform, float3 normal)
+float3 TransformNormal(InstanceTransform transform, float3 normal)
 {
     return normalize(float3(
         dot(transform.normalRow0.xyz, normal),
@@ -43,7 +43,7 @@ float3 transformNormal(InstanceTransform transform, float3 normal)
     ));
 }
 
-Vertex interpolateVertex(uint instanceID, uint primitiveID, float2 barycentrics)
+Vertex InterpolateVertex(uint instanceID, uint primitiveID, float2 barycentrics)
 {
     MeshInfo mesh = gScene.meshInfos[instanceID];
 
@@ -62,20 +62,19 @@ Vertex interpolateVertex(uint instanceID, uint primitiveID, float2 barycentrics)
     result.normal = normalize(w * v0.normal + barycentrics.x * v1.normal + barycentrics.y * v2.normal);
     result.texCoord = w * v0.texCoord + barycentrics.x * v1.texCoord + barycentrics.y * v2.texCoord;
     result.tangent = w * v0.tangent + barycentrics.x * v1.tangent + barycentrics.y * v2.tangent;
-    // Preserve handedness sign
     result.tangent = float4(normalize(result.tangent.xyz), result.tangent.w > 0 ? 1.0 : -1.0);
     return result;
 }
 
-ShadingData prepareShadingData(uint instanceID, uint primitiveID, float2 barycentrics)
+ShadingData PrepareShadingData(uint instanceID, uint primitiveID, float2 barycentrics)
 {
-    Vertex v = interpolateVertex(instanceID, primitiveID, barycentrics);
+    Vertex v = InterpolateVertex(instanceID, primitiveID, barycentrics);
     Material mat = gScene.materials[gScene.meshInfos[instanceID].materialIndex];
     InstanceTransform transform = gScene.instanceTransforms[instanceID];
 
     ShadingData sd;
-    sd.position = transformPoint(transform, v.position);
-    sd.geometryNormal = transformNormal(transform, v.normal);
+    sd.position = TransformPoint(transform, v.position);
+    sd.geometryNormal = TransformNormal(transform, v.normal);
     sd.texCoord = v.texCoord;
     sd.material = mat;
 
@@ -83,7 +82,7 @@ ShadingData prepareShadingData(uint instanceID, uint primitiveID, float2 barycen
     float3 N = sd.geometryNormal;
     if (mat.normalTextureIndex >= 0)
     {
-        float3 T = normalize(transformDirection(transform, v.tangent.xyz));
+        float3 T = normalize(TransformDirection(transform, v.tangent.xyz));
         T = normalize(T - N * dot(N, T));
         float3 B = normalize(cross(N, T)) * v.tangent.w;
         float3x3 TBN = float3x3(T, B, N);
@@ -95,12 +94,10 @@ ShadingData prepareShadingData(uint instanceID, uint primitiveID, float2 barycen
     }
     sd.normal = N;
 
-    // Base color
     sd.baseColor = mat.baseColor;
     if (mat.baseColorTextureIndex >= 0)
         sd.baseColor *= gScene.textures[mat.baseColorTextureIndex].Sample(gScene.sampler, v.texCoord);
 
-    // Metallic / roughness
     sd.metallic = mat.metallic;
     sd.roughness = mat.roughness;
     if (mat.metallicRoughnessTextureIndex >= 0)
@@ -110,12 +107,10 @@ ShadingData prepareShadingData(uint instanceID, uint primitiveID, float2 barycen
         sd.metallic *= mr.b;
     }
 
-    // Emissive
     sd.emissive = mat.emissiveColor * mat.emissiveStrength;
     if (mat.emissiveTextureIndex >= 0)
         sd.emissive *= gScene.textures[mat.emissiveTextureIndex].Sample(gScene.sampler, v.texCoord).rgb;
 
-    // Occlusion
     sd.occlusion = 1.0;
     if (mat.occlusionTextureIndex >= 0)
     {
@@ -126,7 +121,7 @@ ShadingData prepareShadingData(uint instanceID, uint primitiveID, float2 barycen
     return sd;
 }
 
-bool isAlphaMasked(ShadingData sd)
+bool IsAlphaMasked(ShadingData sd)
 {
     return sd.material.alphaMode == AlphaMode.Mask && sd.baseColor.a < sd.material.alphaCutoff;
 }

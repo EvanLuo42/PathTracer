@@ -53,15 +53,15 @@ void GBufferRTPass::CreatePipeline()
 
 void GBufferRTPass::Setup()
 {
-    baseColor = addOutput("baseColor", Format::RGBA8Unorm, PassSlot::Access::UnorderedAccess,
+    baseColor = AddOutput("baseColor", Format::RGBA8Unorm, PassSlot::Access::UnorderedAccess,
                           SizePolicy::BackBuffer(), LoadOp::Load, 0);
-    normal = addOutput("normal", Format::RG16Float, PassSlot::Access::UnorderedAccess,
+    normal = AddOutput("normal", Format::RG16Float, PassSlot::Access::UnorderedAccess,
                        SizePolicy::BackBuffer(), LoadOp::Load, 0);
-    materialData = addOutput("materialData", Format::RGBA8Unorm, PassSlot::Access::UnorderedAccess,
+    materialData = AddOutput("materialData", Format::RGBA8Unorm, PassSlot::Access::UnorderedAccess,
                              SizePolicy::BackBuffer(), LoadOp::Load, 0);
-    depth = addOutput("depth", Format::R32Float, PassSlot::Access::UnorderedAccess,
+    depth = AddOutput("depth", Format::R32Float, PassSlot::Access::UnorderedAccess,
                       SizePolicy::BackBuffer(), LoadOp::Load, 0);
-    markSideEffect();
+    MarkSideEffect();
 }
 
 void GBufferRTPass::Execute(ICommandEncoder* encoder, const RenderGraphResources& resources)
@@ -69,10 +69,10 @@ void GBufferRTPass::Execute(ICommandEncoder* encoder, const RenderGraphResources
     if (!pipeline || !shaderTable || !scene)
         return;
 
-    auto* baseTex = resources.getTexture("baseColor");
-    auto* normTex = resources.getTexture("normal");
-    auto* matTex = resources.getTexture("materialData");
-    auto* depthTex = resources.getTexture("depth");
+    auto* baseTex = resources.GetTexture("baseColor");
+    auto* normTex = resources.GetTexture("normal");
+    auto* matTex = resources.GetTexture("materialData");
+    auto* depthTex = resources.GetTexture("depth");
     if (!baseTex || !normTex || !matTex || !depthTex)
         return;
 

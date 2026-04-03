@@ -49,11 +49,11 @@ void VBufferRasterPass::CreatePipeline()
 
 void VBufferRasterPass::Setup()
 {
-    vbuffer = addOutput("vbuffer", Format::RG32Uint, PassSlot::Access::RenderTarget,
+    vbuffer = AddOutput("vbuffer", Format::RG32Uint, PassSlot::Access::RenderTarget,
                         SizePolicy::BackBuffer(), LoadOp::Clear, 0);
-    depth = addOutput("depth", Format::D32Float, PassSlot::Access::DepthStencil,
+    depth = AddOutput("depth", Format::D32Float, PassSlot::Access::DepthStencil,
                       SizePolicy::BackBuffer(), LoadOp::Clear, 0);
-    markSideEffect();
+    MarkSideEffect();
 }
 
 void VBufferRasterPass::Execute(ICommandEncoder* encoder, const RenderGraphResources& resources)
@@ -61,14 +61,14 @@ void VBufferRasterPass::Execute(ICommandEncoder* encoder, const RenderGraphResou
     if (!pipeline || !scene || scene->GetMeshCount() == 0)
         return;
 
-    auto* vbufTex = resources.getTexture("vbuffer");
-    auto* depthTex = resources.getTexture("depth");
+    auto* vbufTex = resources.GetTexture("vbuffer");
+    auto* depthTex = resources.GetTexture("depth");
     if (!vbufTex || !depthTex)
         return;
 
-    setRenderTarget(0, vbufTex);
-    setDepthStencil(depthTex);
-    auto* pass = beginRenderPass(encoder);
+    SetRenderTarget(0, vbufTex);
+    SetDepthStencil(depthTex);
+    auto* pass = BeginRenderPass(encoder);
 
     auto* shaderObj = pass->bindPipeline(pipeline);
     if (!shaderObj)
@@ -85,7 +85,6 @@ void VBufferRasterPass::Execute(ICommandEncoder* encoder, const RenderGraphResou
 
     scene->Bind(vars);
 
-    // Custom rasterize: sets gMeshIndex per draw call
     const auto& meshInfos = scene->GetMeshInfos();
     auto texDesc = vbufTex->getDesc();
 

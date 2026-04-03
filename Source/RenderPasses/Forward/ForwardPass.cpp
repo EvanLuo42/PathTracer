@@ -49,10 +49,10 @@ void ForwardPass::CreatePipeline()
 
 void ForwardPass::Setup()
 {
-    colorIn = addInput("color", PassSlot::Access::RenderTarget);
-    depth = addOutput("depth", Format::D32Float, PassSlot::Access::DepthStencil,
+    colorIn = AddInput("color", PassSlot::Access::RenderTarget);
+    depth = AddOutput("depth", Format::D32Float, PassSlot::Access::DepthStencil,
                       SizePolicy::BackBuffer(), LoadOp::Clear, 0);
-    markSideEffect();
+    MarkSideEffect();
 }
 
 void ForwardPass::Execute(ICommandEncoder* encoder, const RenderGraphResources& resources)
@@ -60,14 +60,14 @@ void ForwardPass::Execute(ICommandEncoder* encoder, const RenderGraphResources& 
     if (!pipeline || !scene || scene->GetMeshCount() == 0)
         return;
 
-    auto* colorTex = resources.getTexture("color");
-    auto* depthTex = resources.getTexture("depth");
+    auto* colorTex = resources.GetTexture("color");
+    auto* depthTex = resources.GetTexture("depth");
     if (!colorTex || !depthTex)
         return;
 
-    setRenderTarget(0, colorTex);
-    setDepthStencil(depthTex);
-    auto* pass = beginRenderPass(encoder);
+    SetRenderTarget(0, colorTex);
+    SetDepthStencil(depthTex);
+    auto* pass = BeginRenderPass(encoder);
 
     auto* shaderObj = pass->bindPipeline(pipeline);
     if (!shaderObj)

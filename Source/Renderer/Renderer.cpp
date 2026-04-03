@@ -49,8 +49,7 @@ Renderer::Renderer(GLFWwindow* window, rhi::IDevice* device, rhi::ISurface* surf
     gui = std::make_unique<Gui>(device, surface, window);
     graph = std::make_unique<RenderGraph>(device);
 
-    // Import backBuffer placeholder — will be updated each frame
-    graph->importTexture("backBuffer", nullptr);
+    graph->ImportTexture("backBuffer", nullptr);
 }
 
 Renderer::~Renderer()
@@ -79,18 +78,17 @@ void Renderer::BuildGraph()
 
     auto colorFormat = surface->getConfig()->format;
 
-    // VBuffer RT → PathTracer
-    auto* vbuf = graph->addPass<VBufferRTPass>("VBufferRT", device.get(), scene, &camera);
-    pathTracer = graph->addPass<PathTracerPass>("PathTracer", device.get(), colorFormat, scene, &camera);
+    auto* vbuf = graph->AddPass<VBufferRTPass>("VBufferRT", device.get(), scene, &camera);
+    pathTracer = graph->AddPass<PathTracerPass>("PathTracer", device.get(), colorFormat, scene, &camera);
     if (envMap && envSampler)
         pathTracer->SetEnvMap(envMap, envSampler, envImportanceCdf, envMapWidth, envMapHeight);
 
-    graph->addEdge(vbuf->vbuffer, pathTracer->vbufferIn);
-    graph->markOutput(pathTracer->output);
+    graph->AddEdge(vbuf->vbuffer, pathTracer->vbufferIn);
+    graph->MarkOutput(pathTracer->output);
 
     int w, h;
     glfwGetFramebufferSize(window, &w, &h);
-    graph->compile(static_cast<uint32_t>(w), static_cast<uint32_t>(h));
+    graph->Compile(static_cast<uint32_t>(w), static_cast<uint32_t>(h));
 }
 
 void Renderer::LoadEnvMap(const std::filesystem::path& path)
@@ -186,7 +184,6 @@ void Renderer::LoadEnvMap(const std::filesystem::path& path)
 
 void Renderer::OnRenderUI()
 {
-    // Main Menu Bar
     if (ImGui::BeginMainMenuBar())
     {
         if (ImGui::BeginMenu("File"))
@@ -225,13 +222,11 @@ void Renderer::OnRenderUI()
     if (!showUI)
         return;
 
-    // Settings panel
     const auto& io = ImGui::GetIO();
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 360, 30), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(350, 600), ImGuiCond_FirstUseEver);
     ImGui::Begin("Settings");
 
-    // Scene info
     if (ImGui::CollapsingHeader("Scene", ImGuiTreeNodeFlags_DefaultOpen))
     {
         if (scene)
@@ -245,7 +240,6 @@ void Renderer::OnRenderUI()
         }
     }
 
-    // Environment
     if (ImGui::CollapsingHeader("Environment", ImGuiTreeNodeFlags_DefaultOpen))
     {
         if (envMap)
@@ -254,7 +248,6 @@ void Renderer::OnRenderUI()
             ImGui::TextDisabled("No environment map");
     }
 
-    // Camera
     if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen))
     {
         camera.OnRenderUI();
@@ -262,12 +255,10 @@ void Renderer::OnRenderUI()
 
     ImGui::Separator();
 
-    // Render passes
-    graph->onRenderUI();
+    graph->OnRenderUI();
 
     ImGui::End();
 
-    // Floating FPS overlay
     ImGui::SetNextWindowPos(ImVec2(10, 30), ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(0.5f);
     ImGui::Begin("##fps", nullptr,
@@ -295,7 +286,7 @@ void Renderer::OnResize(const uint32_t width, const uint32_t height)
         return;
 
     queue->waitOnHost();
-    graph->resize(width, height);
+    graph->Resize(width, height);
 
     rhi::SurfaceConfig config = *surface->getConfig();
     config.width = width;
@@ -354,13 +345,11 @@ void Renderer::OnRender()
     if (!BeginFrame())
         return;
 
-    // Execute render graph
-    graph->execute(encoder);
+    graph->Execute(encoder);
 
-    // Copy path tracer output to back buffer
     if (pathTracer)
     {
-        auto* ptOutput = graph->getTexture(pathTracer->output);
+        auto* ptOutput = graph->GetTexture(pathTracer->output);
         if (ptOutput)
         {
             auto desc = ptOutput->getDesc();
@@ -372,7 +361,6 @@ void Renderer::OnRender()
         }
     }
 
-    // GUI (outside of graph)
     gui->BeginFrame();
     OnRenderUI();
     gui->Render(encoder, backBuffer);

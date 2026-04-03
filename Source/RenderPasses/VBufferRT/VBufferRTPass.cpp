@@ -54,9 +54,9 @@ void VBufferRTPass::CreatePipeline()
 
 void VBufferRTPass::Setup()
 {
-    vbuffer = addOutput("vbuffer", Format::RGBA32Uint, PassSlot::Access::UnorderedAccess,
+    vbuffer = AddOutput("vbuffer", Format::RGBA32Uint, PassSlot::Access::UnorderedAccess,
                         SizePolicy::BackBuffer(), LoadOp::Load, 0);
-    markSideEffect();
+    MarkSideEffect();
 }
 
 void VBufferRTPass::Execute(ICommandEncoder* encoder, const RenderGraphResources& resources)
@@ -64,7 +64,7 @@ void VBufferRTPass::Execute(ICommandEncoder* encoder, const RenderGraphResources
     if (!pipeline || !shaderTable || !scene)
         return;
 
-    auto* vbufTex = resources.getTexture("vbuffer");
+    auto* vbufTex = resources.GetTexture("vbuffer");
     if (!vbufTex)
         return;
 
