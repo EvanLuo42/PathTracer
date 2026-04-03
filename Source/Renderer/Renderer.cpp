@@ -17,6 +17,7 @@
 namespace
 {
     constexpr float kPi = 3.14159265358979323846f;
+    constexpr float kEnvImportanceEpsilon = 1e-4f;
 
     std::filesystem::path OpenFileDialog(GLFWwindow* window, const char* filter)
     {
@@ -127,7 +128,7 @@ void Renderer::LoadEnvMap(const std::filesystem::path& path)
     for (int y = 0; y < height; y++)
     {
         const float theta = (static_cast<float>(y) + 0.5f) * kPi / static_cast<float>(height);
-        const float sinTheta = (std::max)(std::sin(theta), 1e-4f);
+        const float sinTheta = (std::max)(std::sin(theta), kEnvImportanceEpsilon);
 
         for (int x = 0; x < width; x++)
         {
@@ -137,7 +138,11 @@ void Renderer::LoadEnvMap(const std::filesystem::path& path)
                 0.2126f * (std::max)(texel[0], 0.0f) +
                 0.7152f * (std::max)(texel[1], 0.0f) +
                 0.0722f * (std::max)(texel[2], 0.0f);
-            totalWeight += (std::max)(luminance, 1e-4f) * sinTheta;
+
+            // Temper the importance distribution for outdoor HDRIs so the sun
+            // does not monopolize samples and starve sky fill on backlit faces.
+            const float importance = std::sqrt((std::max)(luminance, 0.0f));
+            totalWeight += (std::max)(importance, kEnvImportanceEpsilon) * sinTheta;
             importanceCdf[index] = static_cast<float>(totalWeight);
         }
     }
@@ -357,6 +362,8 @@ void Renderer::OnRender()
             subresource.layerCount = 1;
             subresource.mipCount = 1;
             rhi::Extent3D extent = {desc.size.width, desc.size.height, 1};
+            encoder->setTextureState(ptOutput, rhi::ResourceState::CopySource);
+            encoder->setTextureState(backBuffer, rhi::ResourceState::CopyDestination);
             encoder->copyTexture(backBuffer, subresource, {}, ptOutput, subresource, {}, extent);
         }
     }

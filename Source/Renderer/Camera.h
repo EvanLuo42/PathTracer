@@ -93,7 +93,11 @@ public:
             yaw += dx * mouseSensitivity;
             pitch -= dy * mouseSensitivity;
             pitch = glm::clamp(pitch, -89.0f, 89.0f);
-            UpdateVectors();
+            if (dx != 0.0f || dy != 0.0f)
+            {
+                UpdateVectors();
+                changedThisFrame = true;
+            }
 
             // WASD movement
             float speed = moveSpeed * deltaTime;
@@ -101,17 +105,35 @@ public:
                 speed *= 3.0f;
 
             if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+            {
                 position += front * speed;
+                changedThisFrame = true;
+            }
             if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+            {
                 position -= front * speed;
+                changedThisFrame = true;
+            }
             if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+            {
                 position -= right * speed;
+                changedThisFrame = true;
+            }
             if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+            {
                 position += right * speed;
+                changedThisFrame = true;
+            }
             if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+            {
                 position += up * speed;
+                changedThisFrame = true;
+            }
             if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
+            {
                 position -= up * speed;
+                changedThisFrame = true;
+            }
         }
         else
         {
@@ -131,6 +153,9 @@ public:
     {
         constexpr float nearZ = 0.001f;
         constexpr float farZ = 10000.0f;
+
+        if (data.aspectRatio != aspectRatio)
+            changedThisFrame = true;
 
         const auto view = glm::lookAt(position, position + front, up);
         const auto proj = glm::perspectiveRH_ZO(glm::radians(fovY), aspectRatio, nearZ, farZ);
@@ -155,21 +180,33 @@ public:
         data.jitter = glm::vec2(0.0f);
         data.frameIndex = frameIndex++;
         data._pad = 0.0f;
+
+        didChangeThisFrame = changedThisFrame;
+        changedThisFrame = false;
     }
 
     [[nodiscard]] const CameraData& GetData() const { return data; }
+    [[nodiscard]] bool DidChangeThisFrame() const { return didChangeThisFrame; }
 
     void OnScroll(double yOffset) { moveSpeed = glm::clamp(moveSpeed + static_cast<float>(yOffset) * 0.3f, 0.1f, 100.0f); }
 
     void OnRenderUI()
     {
-        ImGui::DragFloat3("Position", &position.x, 0.1f);
+        if (ImGui::DragFloat3("Position", &position.x, 0.1f))
+            changedThisFrame = true;
+
         bool orientChanged = false;
         orientChanged |= ImGui::DragFloat("Yaw", &yaw, 0.5f);
         orientChanged |= ImGui::DragFloat("Pitch", &pitch, 0.5f, -89.0f, 89.0f);
         if (orientChanged)
+        {
             UpdateVectors();
-        ImGui::SliderFloat("FoV", &fovY, 10.0f, 120.0f);
+            changedThisFrame = true;
+        }
+
+        if (ImGui::SliderFloat("FoV", &fovY, 10.0f, 120.0f))
+            changedThisFrame = true;
+
         ImGui::DragFloat("Move Speed", &moveSpeed, 0.1f, 0.1f, 100.0f);
         ImGui::SliderFloat("Sensitivity", &mouseSensitivity, 0.01f, 1.0f);
     }
@@ -197,6 +234,8 @@ private:
     CameraData data{};
     uint32_t frameIndex = 0;
     bool captured = false;
+    bool changedThisFrame = true;
+    bool didChangeThisFrame = true;
     double lastMouseX = 0, lastMouseY = 0;
 
 };

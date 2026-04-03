@@ -21,7 +21,7 @@ public:
     void OnRenderUI() override;
     const char* GetName() const override { return "PathTracer"; }
 
-    void ResetAccumulation() { frameCount = 0; }
+    void ResetAccumulation() { accumulatedSamples = 0; }
     void SetEnvMap(rhi::ITexture* texture, rhi::ISampler* sampler,
                    rhi::IBuffer* importanceCdf = nullptr, uint32_t width = 0, uint32_t height = 0);
 
@@ -42,7 +42,10 @@ private:
 
     // Accumulation
     Slang::ComPtr<rhi::ITexture> accumTexture;
-    uint32_t frameCount = 0;
+    uint32_t accumulatedSamples = 0;
+    uint32_t renderFrameIndex = 0;
+    uint32_t samplesPerFrame = 1;
+    uint32_t movingSamplesPerFrame = 4;
     uint32_t maxBounces = 4;
     float exposure = 1.0f;
 
@@ -53,6 +56,8 @@ private:
     uint32_t envWidth = 0;
     uint32_t envHeight = 0;
 
-    // Camera change detection
+    // Keep a copy of the last bound camera state so accumulation reset does
+    // not depend solely on input-event bookkeeping.
     CameraData lastCameraData{};
+    bool hasLastCameraData = false;
 };

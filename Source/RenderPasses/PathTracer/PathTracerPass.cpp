@@ -3,9 +3,33 @@
 #include <imgui.h>
 #include <spdlog/spdlog.h>
 
+#include <cmath>
 #include <cstring>
 
 using namespace rhi;
+
+namespace
+{
+    bool NearlyEqual(const float a, const float b, const float epsilon = 1e-5f)
+    {
+        return std::abs(a - b) <= epsilon;
+    }
+
+    bool NearlyEqual(const glm::vec3& a, const glm::vec3& b, const float epsilon = 1e-5f)
+    {
+        const glm::vec3 delta = a - b;
+        return glm::dot(delta, delta) <= epsilon * epsilon;
+    }
+
+    bool HasCameraStateChanged(const CameraData& current, const CameraData& previous)
+    {
+        return !NearlyEqual(current.position, previous.position) ||
+               !NearlyEqual(current.forward, previous.forward) ||
+               !NearlyEqual(current.up, previous.up) ||
+               !NearlyEqual(current.fovY, previous.fovY) ||
+               !NearlyEqual(current.aspectRatio, previous.aspectRatio);
+    }
+}
 
 PathTracerPass::PathTracerPass(IDevice* device, Format colorFormat, std::shared_ptr<Scene> scene, Camera* camera)
     : device(device), colorFormat(colorFormat), scene(std::move(scene)), camera(camera)
@@ -21,7 +45,7 @@ void PathTracerPass::SetEnvMap(ITexture* texture, ISampler* sampler,
     envImportanceCdf = importanceCdf;
     envWidth = width;
     envHeight = height;
-    frameCount = 0;
+    accumulatedSamples = 0;
 }
 
 void PathTracerPass::CreatePipeline()
@@ -100,20 +124,25 @@ void PathTracerPass::Execute(ICommandEncoder* encoder, const RenderGraphResource
         accumDesc.usage = TextureUsage::UnorderedAccess | TextureUsage::ShaderResource;
         accumDesc.defaultState = ResourceState::UnorderedAccess;
         accumTexture = device->createTexture(accumDesc);
-        frameCount = 0;
+        accumulatedSamples = 0;
     }
 
+    bool cameraChanged = false;
     if (camera)
     {
         const auto& camData = camera->GetData();
-        if (camData.position != lastCameraData.position ||
-            camData.forward != lastCameraData.forward ||
-            camData.fovY != lastCameraData.fovY)
-        {
-            frameCount = 0;
-            lastCameraData = camData;
-        }
+        cameraChanged = camera->DidChangeThisFrame() ||
+                        !hasLastCameraData ||
+                        HasCameraStateChanged(camData, lastCameraData);
+
+        lastCameraData = camData;
+        hasLastCameraData = true;
     }
+
+    if (cameraChanged)
+        accumulatedSamples = 0;
+
+    const uint32_t currentSamplesPerFrame = cameraChanged ? movingSamplesPerFrame : samplesPerFrame;
 
     auto* pass = encoder->beginRayTracingPass();
     auto* shaderObj = pass->bindPipeline(rtPipeline, shaderTable);
@@ -133,9 +162,10 @@ void PathTracerPass::Execute(ICommandEncoder* encoder, const RenderGraphResource
     vars["gVBuffer"] = Slang::ComPtr<ITexture>(vbufTex);
     vars["gOutput"] = Slang::ComPtr<ITexture>(outTex);
     vars["gAccum"] = accumTexture;
-    vars["gFrameCount"] = frameCount;
+    vars["gAccumulatedSamples"] = accumulatedSamples;
+    vars["gSamplesPerFrame"] = currentSamplesPerFrame;
     vars["gMaxBounces"] = maxBounces;
-    vars["gSeed"] = frameCount * 19937u + 1u;
+    vars["gSeed"] = renderFrameIndex * 19937u + 1u;
     vars["gExposure"] = exposure;
 
     bool hasEnv = envMap && envSampler;
@@ -154,7 +184,8 @@ void PathTracerPass::Execute(ICommandEncoder* encoder, const RenderGraphResource
     pass->dispatchRays(0, outDesc.size.width, outDesc.size.height, 1);
     pass->end();
 
-    frameCount++;
+    accumulatedSamples += currentSamplesPerFrame;
+    renderFrameIndex++;
 }
 
 void PathTracerPass::OnRenderUI()
@@ -163,9 +194,25 @@ void PathTracerPass::OnRenderUI()
     if (ImGui::SliderInt("Max Bounces", &bounces, 1, 16))
     {
         maxBounces = static_cast<uint32_t>(bounces);
-        frameCount = 0;
+        accumulatedSamples = 0;
     }
+
+    int spp = static_cast<int>(samplesPerFrame);
+    if (ImGui::SliderInt("Samples / Frame", &spp, 1, 8))
+    {
+        samplesPerFrame = static_cast<uint32_t>(spp);
+        accumulatedSamples = 0;
+    }
+
+    int movingSpp = static_cast<int>(movingSamplesPerFrame);
+    if (ImGui::SliderInt("Moving Samples / Frame", &movingSpp, 1, 8))
+    {
+        movingSamplesPerFrame = static_cast<uint32_t>(movingSpp);
+        accumulatedSamples = 0;
+    }
+
     if (ImGui::SliderFloat("Exposure", &exposure, 0.1f, 10.0f))
-        frameCount = 0;
-    ImGui::Text("Samples: %u", frameCount);
+        accumulatedSamples = 0;
+
+    ImGui::Text("Accumulated Samples: %u", accumulatedSamples);
 }

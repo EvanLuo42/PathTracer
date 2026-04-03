@@ -19,7 +19,8 @@ int gHasEnvImportance;
 uint gEnvWidth;
 uint gEnvHeight;
 
-uint gFrameCount;
+uint gAccumulatedSamples;
+uint gSamplesPerFrame;
 uint gMaxBounces;
 uint gSeed;
 float gExposure;
@@ -98,6 +99,33 @@ bool SampleEnvironmentLight(inout RNG rng, out float3 dir, out float3 radiance, 
     return pdf > 0.0;
 }
 
+float EvalEnvMapPdf(float3 dir)
+{
+    if (gHasEnvMap == 0 || gHasEnvImportance == 0 || gEnvWidth == 0 || gEnvHeight == 0)
+        return 0.0;
+
+    float2 uv = EnvDirectionToUv(dir);
+    uint x = min(uint(uv.x * float(gEnvWidth)), gEnvWidth - 1);
+    uint y = min(uint(uv.y * float(gEnvHeight)), gEnvHeight - 1);
+    uint texelIndex = y * gEnvWidth + x;
+
+    float previous = texelIndex > 0 ? gEnvCdf[texelIndex - 1] : 0.0;
+    float texelProb = max(gEnvCdf[texelIndex] - previous, 0.0);
+    float theta = uv.y * kPI;
+    float sinTheta = max(sin(theta), 1e-4);
+    float texelSolidAngle =
+        (kTwoPI / float(gEnvWidth)) *
+        (kPI / float(gEnvHeight)) *
+        sinTheta;
+    return texelProb / texelSolidAngle;
+}
+
+float PowerHeuristic(float pdfA, float pdfB)
+{
+    float a2 = pdfA * pdfA;
+    return a2 / max(a2 + pdfB * pdfB, 1e-10);
+}
+
 struct PathPayload
 {
     uint instanceID;
@@ -155,7 +183,7 @@ float3 TracePath(ShadingData sd, float3 rayDir, inout RNG rng)
             }
         }
 
-        // NEE: sample environment light
+        // NEE: sample environment light with MIS
         if (gHasEnvImportance != 0)
         {
             float3 envRadiance, envDir;
@@ -166,7 +194,9 @@ float3 TracePath(ShadingData sd, float3 rayDir, inout RNG rng)
                 if (NdotL > 0.0 && TraceShadowRay(position, sd.geometryNormal, envDir, gCamera.farZ))
                 {
                     float3 brdf = EvalBSDF(bsdf, normal, V, envDir);
-                    radiance += throughput * brdf * envRadiance * NdotL / envPdf;
+                    float bsdfPdf = EvalPdf(bsdf, normal, V, envDir);
+                    float misWeight = PowerHeuristic(envPdf, bsdfPdf);
+                    radiance += throughput * brdf * envRadiance * NdotL * misWeight / envPdf;
                 }
             }
         }
@@ -202,8 +232,17 @@ float3 TracePath(ShadingData sd, float3 rayDir, inout RNG rng)
 
         if (indirectPayload.missed)
         {
-            if (gHasEnvImportance == 0)
-                radiance += throughput * SampleEnvMap(sample.wi);
+            float3 envColor = SampleEnvMap(sample.wi);
+            if (gHasEnvImportance != 0)
+            {
+                float envPdf = EvalEnvMapPdf(sample.wi);
+                float misWeight = PowerHeuristic(sample.pdf, envPdf);
+                radiance += throughput * envColor * misWeight;
+            }
+            else
+            {
+                radiance += throughput * envColor;
+            }
             break;
         }
 
@@ -238,21 +277,23 @@ void rayGen()
     float2 barycentrics = float2(asfloat(vbufData.z), asfloat(vbufData.w));
 
     float3 color = float3(0);
+    uint sampleCount = max(gSamplesPerFrame, 1u);
+    float2 uv = (float2(pixel) + 0.5) / float2(dims);
+    Ray primaryRay = gCamera.GenerateRay(uv);
 
     if (instanceID != 0xFFFFFFFF)
     {
-        RNG rng = CreateRNG(pixel, gSeed);
         ShadingData sd = PrepareShadingData(instanceID, primitiveID, barycentrics);
-
-        float2 uv = (float2(pixel) + 0.5) / float2(dims);
-        Ray primaryRay = gCamera.GenerateRay(uv);
-
-        color = TracePath(sd, primaryRay.Direction, rng);
+        for (uint sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++)
+        {
+            uint sampleSeed = gSeed + sampleIndex * 0x9E3779B9u;
+            RNG rng = CreateRNG(pixel, sampleSeed);
+            color += TracePath(sd, primaryRay.Direction, rng);
+        }
+        color /= float(sampleCount);
     }
     else
     {
-        float2 uv = (float2(pixel) + 0.5) / float2(dims);
-        Ray primaryRay = gCamera.GenerateRay(uv);
         color = SampleEnvMap(primaryRay.Direction);
     }
 
@@ -260,11 +301,12 @@ void rayGen()
         color = float3(0);
 
     // Accumulate
-    if (gFrameCount > 0)
+    if (gAccumulatedSamples > 0)
     {
         float3 prev = gAccum[pixel].rgb;
-        float t = 1.0 / float(gFrameCount + 1);
-        color = lerp(prev, color, t);
+        float prevWeight = float(gAccumulatedSamples);
+        float currentWeight = float(sampleCount);
+        color = (prev * prevWeight + color * currentWeight) / (prevWeight + currentWeight);
     }
 
     gAccum[pixel] = float4(color, 1.0);
