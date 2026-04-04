@@ -30,7 +30,9 @@ public:
     RenderGraphSlot ImportTexture(const std::string& name, rhi::ITexture* texture,
                                    rhi::ResourceState currentState = rhi::ResourceState::Undefined);
 
-    void MarkOutput(const RenderGraphSlot& slot);
+    void MarkOutput(const std::string& displayName, const RenderGraphSlot& slot);
+    void SetBackBuffer(rhi::ITexture* texture);
+    bool NeedsRecompile() const { return needsRecompile; }
 
     void Compile(uint32_t backBufferWidth, uint32_t backBufferHeight);
     void Execute(rhi::ICommandEncoder* encoder);
@@ -97,6 +99,13 @@ private:
 
     std::unordered_map<std::string, uint32_t> slotToPhysical;
 
-    uint32_t outputPass = UINT32_MAX;
-    std::string outputSlot;
+    struct OutputEntry
+    {
+        std::string displayName;
+        RenderGraphSlot slot;
+    };
+    std::vector<OutputEntry> outputs;
+    int selectedOutput = 0;
+    rhi::ITexture* backBufferPtr = nullptr;
+    bool needsRecompile = false;
 };

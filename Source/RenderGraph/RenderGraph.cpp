@@ -5,6 +5,7 @@
 
 #include <cassert>
 #include <queue>
+#include <ranges>
 #include <set>
 
 using namespace rhi;
@@ -158,10 +159,14 @@ RenderGraphSlot RenderGraph::ImportTexture(const std::string& name, ITexture* te
     return {index, "out"};
 }
 
-void RenderGraph::MarkOutput(const RenderGraphSlot& slot)
+void RenderGraph::MarkOutput(const std::string& displayName, const RenderGraphSlot& slot)
 {
-    outputPass = slot.passIndex;
-    outputSlot = slot.name;
+    outputs.push_back({displayName, slot});
+}
+
+void RenderGraph::SetBackBuffer(ITexture* texture)
+{
+    backBufferPtr = texture;
 }
 
 TextureUsage RenderGraph::AccessToUsage(PassSlot::Access access)
@@ -290,10 +295,11 @@ void RenderGraph::TopologicalSort()
     std::vector<bool> alive(passCount, false);
     {
         std::queue<uint32_t> q;
-        if (outputPass != UINT32_MAX)
+        if (selectedOutput >= 0 && selectedOutput < static_cast<int>(outputs.size()))
         {
-            alive[outputPass] = true;
-            q.push(outputPass);
+            uint32_t passIdx = outputs[selectedOutput].slot.passIndex;
+            alive[passIdx] = true;
+            q.push(passIdx);
         }
         for (uint32_t i = 0; i < passCount; i++)
         {
@@ -391,6 +397,10 @@ void RenderGraph::Compile(uint32_t backBufferWidth, uint32_t backBufferHeight)
 {
     bbWidth = backBufferWidth;
     bbHeight = backBufferHeight;
+    needsRecompile = false;
+
+    if (selectedOutput < 0 || selectedOutput >= static_cast<int>(outputs.size()))
+        selectedOutput = 0;
 
     executionOrder.clear();
 
@@ -442,18 +452,33 @@ void RenderGraph::Execute(ICommandEncoder* encoder)
         }
 
         RenderGraphResources resources;
-        for (const auto& [slotName, slot] : passes[cp.passIndex].pass->GetSlots())
+        for (const auto& slotName : passes[cp.passIndex].pass->GetSlots() | std::views::keys)
         {
             auto key = std::to_string(cp.passIndex) + ":" + slotName;
             auto physIt = slotToPhysical.find(key);
             if (physIt == slotToPhysical.end())
                 continue;
-            auto& phys = physicalResources[physIt->second];
-            if (phys.texture)
+            if (const auto& phys = physicalResources[physIt->second]; phys.texture)
                 resources.textures[slotName] = phys.texture;
         }
 
         passes[cp.passIndex].pass->Execute(encoder, resources);
+    }
+
+    if (backBufferPtr && selectedOutput >= 0 && selectedOutput < static_cast<int>(outputs.size()))
+    {
+        if (auto* srcTexture = GetTexture(outputs[selectedOutput].slot))
+        {
+            const auto desc = srcTexture->getDesc();
+            SubresourceRange subresource = {};
+            subresource.layerCount = 1;
+            subresource.mipCount = 1;
+            const Extent3D extent = {desc.size.width, desc.size.height, 1};
+
+            encoder->setTextureState(srcTexture, ResourceState::CopySource);
+            encoder->setTextureState(backBufferPtr, ResourceState::CopyDestination);
+            encoder->copyTexture(backBufferPtr, subresource, {}, srcTexture, subresource, {}, extent);
+        }
     }
 }
 
@@ -476,6 +501,30 @@ ITexture* RenderGraph::GetTexture(const RenderGraphSlot& slot) const
 
 void RenderGraph::OnRenderUI()
 {
+    if (outputs.size() > 1)
+    {
+        const char* currentName = outputs[selectedOutput].displayName.c_str();
+        if (ImGui::BeginCombo("Output", currentName))
+        {
+            for (int i = 0; i < static_cast<int>(outputs.size()); i++)
+            {
+                bool isSelected = (i == selectedOutput);
+                if (ImGui::Selectable(outputs[i].displayName.c_str(), isSelected))
+                {
+                    if (selectedOutput != i)
+                    {
+                        selectedOutput = i;
+                        needsRecompile = true;
+                    }
+                }
+                if (isSelected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::Separator();
+    }
+
     for (const auto& cp : executionOrder)
     {
         auto* pass = passes[cp.passIndex].pass.get();

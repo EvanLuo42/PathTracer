@@ -49,8 +49,6 @@ Renderer::Renderer(GLFWwindow* window, rhi::IDevice* device, rhi::ISurface* surf
 
     gui = std::make_unique<Gui>(device, surface, window);
     graph = std::make_unique<RenderGraph>(device);
-
-    graph->ImportTexture("backBuffer", nullptr);
 }
 
 Renderer::~Renderer()
@@ -85,7 +83,8 @@ void Renderer::BuildGraph()
         pathTracer->SetEnvMap(envMap, envSampler, envImportanceCdf, envMapWidth, envMapHeight);
 
     graph->AddEdge(vbuf->vbuffer, pathTracer->vbufferIn);
-    graph->MarkOutput(pathTracer->output);
+    graph->MarkOutput("Path Tracer", pathTracer->output);
+    graph->MarkOutput("VBuffer", vbuf->vbuffer);
 
     int w, h;
     glfwGetFramebufferSize(window, &w, &h);
@@ -350,23 +349,15 @@ void Renderer::OnRender()
     if (!BeginFrame())
         return;
 
-    graph->Execute(encoder);
-
-    if (pathTracer)
+    if (graph->NeedsRecompile())
     {
-        auto* ptOutput = graph->GetTexture(pathTracer->output);
-        if (ptOutput)
-        {
-            auto desc = ptOutput->getDesc();
-            rhi::SubresourceRange subresource = {};
-            subresource.layerCount = 1;
-            subresource.mipCount = 1;
-            rhi::Extent3D extent = {desc.size.width, desc.size.height, 1};
-            encoder->setTextureState(ptOutput, rhi::ResourceState::CopySource);
-            encoder->setTextureState(backBuffer, rhi::ResourceState::CopyDestination);
-            encoder->copyTexture(backBuffer, subresource, {}, ptOutput, subresource, {}, extent);
-        }
+        int w, h;
+        glfwGetFramebufferSize(window, &w, &h);
+        graph->Compile(static_cast<uint32_t>(w), static_cast<uint32_t>(h));
     }
+
+    graph->SetBackBuffer(backBuffer);
+    graph->Execute(encoder);
 
     gui->BeginFrame();
     OnRenderUI();

@@ -254,11 +254,6 @@ float3 TracePath(ShadingData sd, float3 rayDir, inout RNG rng)
         radiance += throughput * sd.emissive;
     }
 
-    // Clamp fireflies
-    float maxVal = max(radiance.x, max(radiance.y, radiance.z));
-    if (maxVal > 50.0)
-        radiance *= 50.0 / maxVal;
-
     return radiance;
 }
 
